@@ -1,94 +1,66 @@
+#include "wrappers.h"
 #include <stdio.h>
-#include <GL/glew.h>
-#include <GL/GL.h>
-#include <glfw/glfw3.h>
-#include <assert.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
+#include <string>
+#include <memory>
+#include <optional>
 
 
-#define GLCALL(call)\
-    while (glGetError() != GL_NO_ERROR);\
-    call;\
-    glTreatError(#call, __LINE__)
-
-
-void glTreatError(const char* func, int line) {
-    int res = glGetError(); 
-    if (res != GL_NO_ERROR) {
-        fprintf(stderr, "%s failed on line %d with code 0x%x\n", func, line, res);
-    }
+#ifdef _DEBUG
+void APIENTRY debug_proc(GLenum source,
+                         GLenum type,
+                         GLuint id,
+                         GLenum severity,
+                         GLsizei length,
+                         const GLchar* message,
+                         const void* userParam) {
+    fprintf(stderr, "[%d] %d generated error %x: %s", severity, source, type, message);
 }
+#endif // _DEBUG
 
 
-bool read_file(const char* filepath, char **buffer) {
-    if (!filepath || !buffer) return false;
-
-    int length;
-    int total_read = 0;
-    int read;
-    char *buf;
-
-    FILE *file = fopen(filepath, "r");
+std::optional<std::string> read_file(const std::string &filepath) {
+    std::unique_ptr<FILE, int(*)(FILE*)> file{ fopen(filepath.c_str(), "r"), fclose };
     if (!file)
-        return false;
+        return std::nullopt;
 
     bool ret = true;
-    if (fseek(file, 0, SEEK_END) < 0) {
-        ret = false;
+    if (fseek(file.get(), 0, SEEK_END) < 0) return std::nullopt;
 
-        goto close_file;
-    }
+    int length = ftell(file.get());
+    if (length <= 0)
+        return std::nullopt;
 
-    length = ftell(file);
-    if (length <= 0) {
-        ret = false;
+    rewind(file.get());
 
-        goto close_file;
-    }
+    std::string buf;
+    buf.resize(length);
 
-    rewind(file);
-
-    buf = (char *)malloc(length + 1);
-    if (!buf) {
-        ret = false;
-
-        goto close_file;
-    }
-
-    while (read = fread(buf + total_read, 1, length - total_read, file))
+    int read;
+    int total_read = 0;
+    while (read = fread(buf.data() + total_read, 1, length - total_read, file.get()))
         total_read += read;
 
-    buf[length] = '\0';
-
-    *buffer = buf;
-
-close_file:
-    fclose(file);
-
-    return ret;
+    return buf;
 }
 
 
-bool create_shader(const char *filepath, uint32_t type, uint32_t *out_shader) {
-    if (!filepath || !out_shader) return false;
+std::optional<shader_t> create_shader(const std::string &filepath, uint32_t type) {
+    std::optional<std::string> source_opt = read_file(filepath);
+    if (!source_opt.has_value()) return std::nullopt;
 
-    char *source;
-    if (!read_file(filepath, &source)) return false;
+    std::string source = *source_opt;
 
-    uint32_t shader;
-    GLCALL(shader = glCreateShader(type));
+    uint32_t handle = glCreateShader(type);
 
-    GLCALL(glShaderSource(shader, 1, &source, NULL));
+    shader_t shader{handle};
 
-    GLCALL(glCompileShader(shader));
+    const char *csource = source.c_str();
 
-    *out_shader = shader;
- 
-    free(source);
+    glShaderSource(shader.get(), 1, (const char * const *)&csource, NULL);
 
-    return true;
+    glCompileShader(shader.get());
+
+    return shader;
 }
 
 
@@ -102,124 +74,108 @@ int main() {
         { 0.5f, -0.5f},
     };
 
-    if (!glfwInit()) {
-        fprintf(stderr, "Failed to initialize glfw library.\n");
+    try {
+        glfw_t glfw;
 
-        return 1;
-    }
-    
-    GLenum err;
+        window_t window{ glfwCreateWindow(640, 480, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
+        if (!window) {
+            fprintf(stderr, "Failed to create glfw window.\n");
 
-    uint32_t vertex_shader;
-    uint32_t fragment_shader;
-    uint32_t program;
-
-    int length;
-    char error_log[1024];
-
-    GLFWwindow *window = glfwCreateWindow(640, 480, "Hello OpenGL", NULL, NULL);
-    if (!window) {
-        fprintf(stderr, "Failed to create glfw window.\n");
-
-        const char *description;
-        if (glfwGetError(&description) != GLFW_NO_ERROR) {
-            fprintf(stderr, "%s\n", description);
+            const char* description;
+            if (glfwGetError(&description) != GLFW_NO_ERROR) {
+                fprintf(stderr, "%s\n", description);
+            }
         }
 
-        goto uninit_glfw;
+#ifdef _DEBUG
+        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+#endif
+
+        glfwMakeContextCurrent(window.get());
+
+        GLenum err = glewInit();
+        if (err != GLEW_OK) {
+            fprintf(stderr, "Failed to initialize glew: %s", glewGetErrorString(err));
+
+            return 1;
+        }
+
+        glDebugMessageCallback(debug_proc, NULL);
+
+        uint32_t handle;
+        glGenVertexArrays(1, &handle);
+        vertex_array_t vao{ handle };
+
+        glBindVertexArray(vao.get());
+
+        glGenBuffers(1, &handle);
+        buffer_t vbo{ handle };
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof(coords), &coords[0], GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL);
+
+        auto shader_opt = create_shader("vertex.glsl", GL_VERTEX_SHADER);
+        if (!shader_opt.has_value()) {
+            fprintf(stderr, "Failed to read vertex shader.\n");
+            return 1;
+        }
+
+        auto vertex_shader = std::move(*shader_opt);
+
+        int length;
+        char error_log[1024];
+        glGetShaderiv(vertex_shader.get(), GL_INFO_LOG_LENGTH, &length);
+        if (length) {
+            glGetShaderInfoLog(vertex_shader.get(), sizeof(error_log), NULL, &error_log[0]);
+            fprintf(stderr, "Failed to compile vertex shader: %s", error_log);
+            return 1;
+        }
+
+        shader_opt = create_shader("fragment.glsl", GL_FRAGMENT_SHADER);
+        if (!shader_opt) {
+            fprintf(stderr, "Failed to read fragment shader.\n");
+            return 1;
+        }
+
+        auto fragment_shader = std::move(*shader_opt);
+
+        glGetShaderiv(fragment_shader.get(), GL_INFO_LOG_LENGTH, &length);
+        if (length) {
+            glGetShaderInfoLog(fragment_shader.get(), sizeof(error_log), NULL, &error_log[0]);
+            fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
+            return 1;
+        }
+
+        handle = glCreateProgram();
+        program_t program{ handle };
+
+        glAttachShader(program.get(), vertex_shader.get());
+        glAttachShader(program.get(), fragment_shader.get());
+
+        glLinkProgram(program.get());
+
+        glGetProgramiv(program.get(), GL_INFO_LOG_LENGTH, &length);
+        if (length) {
+            glGetProgramInfoLog(program.get(), sizeof(error_log), NULL, &error_log[0]);
+            fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
+            return 1;
+        }
+
+        glUseProgram(program.get());
+
+        while (!glfwWindowShouldClose(window.get())) {
+            glDrawArrays(GL_TRIANGLES, 0, sizeof(coords) / sizeof(coords[0]));
+
+            glfwSwapBuffers(window.get());
+            glfwPollEvents();
+        }
+    } catch (const std::exception &ex) {
+        fprintf(stderr, "%s\n", ex.what());
+    } catch (...) {
+        fprintf(stderr, "An exception has occured.\n");
     }
-
-    glfwMakeContextCurrent(window);
-
-    err = glewInit();
-    if (err != GLEW_OK) {
-        fprintf(stderr, "Failed to initialize glew: %s", glewGetErrorString(err));
-
-        goto destroy_window;
-    }
-
-    uint32_t vao;
-    GLCALL(glGenVertexArrays(1, &vao));
-    GLCALL(glBindVertexArray(vao));
-
-    uint32_t vbo;
-    GLCALL(glGenBuffers(1, &vbo));
-    GLCALL(glBindBuffer(GL_ARRAY_BUFFER, vbo));
-
-    GLCALL(glBufferData(GL_ARRAY_BUFFER, sizeof(coords), &coords[0], GL_STATIC_DRAW));
-
-    GLCALL(glEnableVertexAttribArray(0));
-    GLCALL(glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL));
-
-    if (!create_shader("vertex.glsl", GL_VERTEX_SHADER, &vertex_shader)) {
-        fprintf(stderr, "Failed to read vertex shader.\n");
-
-        goto delete_buffers;
-    }
-
-    GLCALL(glGetShaderiv(vertex_shader, GL_INFO_LOG_LENGTH, &length));
-    if (length) {
-        GLCALL(glGetShaderInfoLog(vertex_shader, sizeof(error_log), NULL, &error_log[0]));
-        fprintf(stderr, "Failed to compile vertex shader: %s", error_log);
-        goto delete_vertex;
-    }
-
-    if (!create_shader("fragment.glsl", GL_FRAGMENT_SHADER, &fragment_shader)) {
-        fprintf(stderr, "Failed to read fragment shader.\n");
-
-        goto delete_vertex;
-    }
-
-    GLCALL(glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &length));
-    if (length) {
-        GLCALL(glGetShaderInfoLog(fragment_shader, sizeof(error_log), NULL, &error_log[0]));
-        fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-        goto delete_fragment;
-    }
-
-    GLCALL(program = glCreateProgram());
-
-    GLCALL(glAttachShader(program, vertex_shader));
-    GLCALL(glAttachShader(program, fragment_shader));
-
-    GLCALL(glLinkProgram(program));
-
-    GLCALL(glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length));
-    if (length) {
-        GLCALL(glGetProgramInfoLog(program, sizeof(error_log), NULL, &error_log[0]));
-        fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-        goto delete_program;
-    }
-
-    GLCALL(glUseProgram(program));
-
-    while (!glfwWindowShouldClose(window)) {
-        glDrawArrays(GL_TRIANGLES, 0, sizeof(coords) / sizeof(coords[0]));
-
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
-
-delete_program:
-    glDeleteProgram(program);
-
-delete_fragment:
-    glDeleteShader(fragment_shader);
-
-delete_vertex:
-    glDeleteShader(vertex_shader);
-
-delete_buffers:
-
-    glDeleteBuffers(1, &vbo);
-
-    glDeleteVertexArrays(1, &vao);
-
-destroy_window:
-    glfwDestroyWindow(window);
-
-uninit_glfw:
-    glfwTerminate();
-
-    return 0;
 }

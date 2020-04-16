@@ -4,6 +4,8 @@
 #include <glfw/glfw3.h>
 #include <assert.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 
 #define GLCALL(call)\
@@ -20,25 +22,77 @@ void glTreatError(const char* func, int line) {
 }
 
 
+bool read_file(const char* filepath, char **buffer) {
+    if (!filepath || !buffer) return false;
+
+    int length;
+    int total_read = 0;
+    int read;
+    char *buf;
+
+    FILE *file = fopen(filepath, "r");
+    if (!file)
+        return false;
+
+    bool ret = true;
+    if (fseek(file, 0, SEEK_END) < 0) {
+        ret = false;
+
+        goto close_file;
+    }
+
+    length = ftell(file);
+    if (length <= 0) {
+        ret = false;
+
+        goto close_file;
+    }
+
+    rewind(file);
+
+    buf = (char *)malloc(length + 1);
+    if (!buf) {
+        ret = false;
+
+        goto close_file;
+    }
+
+    while (read = fread(buf + total_read, 1, length - total_read, file))
+        total_read += read;
+
+    buf[length] = '\0';
+
+    *buffer = buf;
+
+close_file:
+    fclose(file);
+
+    return ret;
+}
+
+
+bool create_shader(const char *filepath, uint32_t type, uint32_t *out_shader) {
+    if (!filepath || !out_shader) return false;
+
+    char *source;
+    if (!read_file(filepath, &source)) return false;
+
+    uint32_t shader;
+    GLCALL(shader = glCreateShader(type));
+
+    GLCALL(glShaderSource(shader, 1, &source, NULL));
+
+    GLCALL(glCompileShader(shader));
+
+    *out_shader = shader;
+ 
+    free(source);
+
+    return true;
+}
+
+
 int main() {
-    const char *vertex_source = 
-        "#version 330\n"
-        "\n"
-        "in vec2 pos;\n"
-        "\n"
-        "void main() {\n"
-        "    gl_Position = vec4(pos, 0.0f, 1.0f);\n"
-        "}\n";
-
-    const char *fragment_source = 
-        "#version 330\n"
-        "\n"
-        "out vec4 color;\n"
-        "\n"
-        "void main() {\n"
-        "    color = vec4(1.0f, 1.0f, 1.0f, 1.0f);\n"
-        "}\n";
-
     const struct {
         float x;
         float y;
@@ -97,10 +151,11 @@ int main() {
     GLCALL(glEnableVertexAttribArray(0));
     GLCALL(glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL));
 
-    GLCALL(vertex_shader = glCreateShader(GL_VERTEX_SHADER));
-    GLCALL(glShaderSource(vertex_shader, 1, &vertex_source, NULL));
+    if (!create_shader("vertex.glsl", GL_VERTEX_SHADER, &vertex_shader)) {
+        fprintf(stderr, "Failed to read vertex shader.\n");
 
-    GLCALL(glCompileShader(vertex_shader));
+        goto delete_buffers;
+    }
 
     GLCALL(glGetShaderiv(vertex_shader, GL_INFO_LOG_LENGTH, &length));
     if (length) {
@@ -109,10 +164,11 @@ int main() {
         goto delete_vertex;
     }
 
-    GLCALL(fragment_shader = glCreateShader(GL_FRAGMENT_SHADER));
-    GLCALL(glShaderSource(fragment_shader, 1, &fragment_source, NULL));
+    if (!create_shader("fragment.glsl", GL_FRAGMENT_SHADER, &fragment_shader)) {
+        fprintf(stderr, "Failed to read fragment shader.\n");
 
-    GLCALL(glCompileShader(fragment_shader));
+        goto delete_vertex;
+    }
 
     GLCALL(glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &length));
     if (length) {
@@ -144,10 +200,6 @@ int main() {
         glfwPollEvents();
     }
 
-    printf("%s\n", glGetString(GL_VERSION));
-
-    printf("Hello World!\n");
-
 delete_program:
     glDeleteProgram(program);
 
@@ -157,10 +209,10 @@ delete_fragment:
 delete_vertex:
     glDeleteShader(vertex_shader);
 
-uninit_vbo:
+delete_buffers:
+
     glDeleteBuffers(1, &vbo);
 
-uninit_vao:
     glDeleteVertexArrays(1, &vao);
 
 destroy_window:

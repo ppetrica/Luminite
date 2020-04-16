@@ -1,14 +1,21 @@
+#include "shader.h"
 #include "wrappers.h"
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <memory>
 #include <optional>
+#include <vector>
+#include <fstream>
+#include <filesystem>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 
+void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices);
+
+
 #ifdef _DEBUG
-void APIENTRY debug_proc(GLenum source,
+static void APIENTRY debug_proc(GLenum source,
                          GLenum type,
                          GLuint id,
                          GLenum severity,
@@ -20,62 +27,7 @@ void APIENTRY debug_proc(GLenum source,
 #endif // _DEBUG
 
 
-std::optional<std::string> read_file(const std::string &filepath) {
-    std::unique_ptr<FILE, int(*)(FILE*)> file{ fopen(filepath.c_str(), "r"), fclose };
-    if (!file)
-        return std::nullopt;
-
-    bool ret = true;
-    if (fseek(file.get(), 0, SEEK_END) < 0) return std::nullopt;
-
-    int length = ftell(file.get());
-    if (length <= 0)
-        return std::nullopt;
-
-    rewind(file.get());
-
-    std::string buf;
-    buf.resize(length);
-
-    int read;
-    int total_read = 0;
-    while (read = fread(buf.data() + total_read, 1, length - total_read, file.get()))
-        total_read += read;
-
-    return buf;
-}
-
-
-std::optional<shader_t> create_shader(const std::string &filepath, uint32_t type) {
-    std::optional<std::string> source_opt = read_file(filepath);
-    if (!source_opt.has_value()) return std::nullopt;
-
-    std::string source = *source_opt;
-
-    uint32_t handle = glCreateShader(type);
-
-    shader_t shader{handle};
-
-    const char *csource = source.c_str();
-
-    glShaderSource(shader.get(), 1, (const char * const *)&csource, NULL);
-
-    glCompileShader(shader.get());
-
-    return shader;
-}
-
-
 int main() {
-    const struct {
-        float x;
-        float y;
-    } coords[] = {
-        {-0.5f, -0.5f},
-        { 0.0f,  0.5f},
-        { 0.5f, -0.5f},
-    };
-
     try {
         glfw_t glfw;
 
@@ -92,7 +44,6 @@ int main() {
 #ifdef _DEBUG
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 #endif
-
         glfwMakeContextCurrent(window.get());
 
         GLenum err = glewInit();
@@ -117,88 +68,56 @@ int main() {
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
 
-        glBufferData(GL_ARRAY_BUFFER, sizeof(coords), &coords[0], GL_STATIC_DRAW);
+        std::vector<glm::vec2> coords = {
+            {-0.5f, -0.5f},
+            { 0.0f,  0.5f},
+            { 0.5f, -0.5f}
+        };
+
+        glBufferData(GL_ARRAY_BUFFER, coords.size() * sizeof(coords[0]), &coords[0], GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL);
 
-        auto shader_opt = create_shader("vertex.glsl", GL_VERTEX_SHADER);
-        if (!shader_opt.has_value()) {
-            fprintf(stderr, "Failed to read vertex shader.\n");
-            return 1;
-        }
+        program_t program = load_program("vertex.glsl", "fragment.glsl");
 
-        auto vertex_shader = std::move(*shader_opt);
-
-        int length;
-        char error_log[1024];
-        glGetShaderiv(vertex_shader.get(), GL_INFO_LOG_LENGTH, &length);
-        if (length) {
-            glGetShaderInfoLog(vertex_shader.get(), sizeof(error_log), NULL, &error_log[0]);
-            fprintf(stderr, "Failed to compile vertex shader: %s", error_log);
-            return 1;
-        }
-
-        shader_opt = create_shader("fragment.glsl", GL_FRAGMENT_SHADER);
-        if (!shader_opt) {
-            fprintf(stderr, "Failed to read fragment shader.\n");
-            return 1;
-        }
-
-        auto fragment_shader = std::move(*shader_opt);
-
-        glGetShaderiv(fragment_shader.get(), GL_INFO_LOG_LENGTH, &length);
-        if (length) {
-            glGetShaderInfoLog(fragment_shader.get(), sizeof(error_log), NULL, &error_log[0]);
-            fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-            return 1;
-        }
-
-        handle = glCreateProgram();
-        program_t program{ handle };
-
-        glAttachShader(program.get(), vertex_shader.get());
-        glAttachShader(program.get(), fragment_shader.get());
-
-        glLinkProgram(program.get());
-
-        glGetProgramiv(program.get(), GL_INFO_LOG_LENGTH, &length);
-        if (length) {
-            glGetProgramInfoLog(program.get(), sizeof(error_log), NULL, &error_log[0]);
-            fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-            return 1;
-        }
-
-        glUseProgram(program.get());
-
-        int model_location = glGetUniformLocation(program.get(), "u_model");
-        if (model_location == -1) {
-            fprintf(stderr, "Failed to find model matrix location in shader.\n");
-            return 1;
-        }
-
-        float angle = 0.0f;
-        glm::mat4 model;
-
-        while (!glfwWindowShouldClose(window.get())) {
-            glClear(GL_COLOR_BUFFER_BIT);
-
-            model = glm::translate(glm::vec3{sin(angle) * 0.5f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-            angle += 0.001f;
-            if (angle > 2 * glm::pi<float>())
-                angle = 0.0f;
-
-            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
-
-            glDrawArrays(GL_TRIANGLES, 0, sizeof(coords) / sizeof(coords[0]));
-
-            glfwSwapBuffers(window.get());
-            glfwPollEvents();
-        }
+        run_main_loop(window.get(), program.get(), coords.size());
     } catch (const std::exception &ex) {
         fprintf(stderr, "%s\n", ex.what());
+
+        return 1;
     } catch (...) {
         fprintf(stderr, "An exception has occured.\n");
+        
+        return 1;
+    }
+}
+
+
+void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
+    static const char *MODEL_UNIFORM = "u_odel";
+
+    int model_location = glGetUniformLocation(program, MODEL_UNIFORM);
+    if (model_location == -1)
+        throw gl_uniform_not_found_exception(MODEL_UNIFORM);
+
+    float angle = 0.0f;
+    glm::mat4 model;
+
+    while (!glfwWindowShouldClose(window)) {
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        model = glm::translate(glm::vec3{sin(angle) * 0.5f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        angle += 0.001f;
+        if (angle > 2 * glm::pi<float>())
+            angle = 0.0f;
+
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 }

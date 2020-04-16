@@ -92,11 +92,25 @@ private:
 
 class program_t {
 public:
-    program_t(uint32_t handle) : handle_(handle) {}
+    explicit program_t(uint32_t handle) : handle_(handle) {}
     ~program_t() {
         glDeleteProgram(handle_);
     }
 
+    program_t(const program_t &other) = delete;
+    program_t operator=(const program_t &other) = delete;
+
+    program_t(program_t &&other) noexcept { 
+        handle_ = 0;
+        std::swap(handle_, other.handle_);
+    }
+    
+    program_t operator=(program_t&& other) noexcept {
+        glDeleteProgram(handle_);
+        handle_ = 0;
+        std::swap(handle_, other.handle_);
+    }
+    
     uint32_t get() const { return handle_; }
 
 private:

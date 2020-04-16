@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 
 #ifdef _DEBUG
@@ -169,7 +171,26 @@ int main() {
 
         glUseProgram(program.get());
 
+        int model_location = glGetUniformLocation(program.get(), "u_model");
+        if (model_location == -1) {
+            fprintf(stderr, "Failed to find model matrix location in shader.\n");
+            return 1;
+        }
+
+        float angle = 0.0f;
+        glm::mat4 model;
+
         while (!glfwWindowShouldClose(window.get())) {
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            model = glm::translate(glm::vec3{sin(angle) * 0.5f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+            angle += 0.001f;
+            if (angle > 2 * glm::pi<float>())
+                angle = 0.0f;
+
+            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
             glDrawArrays(GL_TRIANGLES, 0, sizeof(coords) / sizeof(coords[0]));
 
             glfwSwapBuffers(window.get());

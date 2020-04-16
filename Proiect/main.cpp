@@ -112,10 +112,10 @@ int main() {
 }
 
 
-void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
+void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     using namespace std::chrono_literals;
-    
-    static const char *MODEL_UNIFORM = "u_model";
+
+    static const char* MODEL_UNIFORM = "u_model";
 
     int model_location = glGetUniformLocation(program, MODEL_UNIFORM);
     if (model_location == -1)
@@ -124,12 +124,33 @@ void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
     float angle = 0.0f;
     glm::mat4 model;
 
+    int width, height;
+    glfwGetWindowSize(window, &width, &height);
+
+    static const char* PROJ_UNIFORM = "u_proj";
+    int proj_location = glGetUniformLocation(program, PROJ_UNIFORM);
+    if (proj_location == -1)
+        throw gl_uniform_not_found_exception(PROJ_UNIFORM);
+
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 100.0f);
+
+    glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
+
+    static const char* VIEW_UNIFORM = "u_view";
+    int view_location = glGetUniformLocation(program, VIEW_UNIFORM);
+    if (view_location == -1)
+        throw gl_uniform_not_found_exception(VIEW_UNIFORM);
+
+    glm::mat4 view = glm::lookAt(glm::vec3{4, 3, 3}, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
+
+    glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
+
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
         glClear(GL_COLOR_BUFFER_BIT);
 
-        model = glm::translate(glm::vec3{sin(angle) * 0.5f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
+        model = glm::translate(glm::vec3{sin(angle) * 3.0f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
 
         angle += 0.00001f * dt.count();
         if (angle > 2 * glm::pi<float>())

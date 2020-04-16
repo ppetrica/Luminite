@@ -106,7 +106,7 @@ int main() {
     if (length) {
         GLCALL(glGetShaderInfoLog(vertex_shader, sizeof(error_log), NULL, &error_log[0]));
         fprintf(stderr, "Failed to compile vertex shader: %s", error_log);
-        goto uninit_vbo;
+        goto delete_vertex;
     }
 
     GLCALL(fragment_shader = glCreateShader(GL_FRAGMENT_SHADER));
@@ -118,7 +118,7 @@ int main() {
     if (length) {
         GLCALL(glGetShaderInfoLog(fragment_shader, sizeof(error_log), NULL, &error_log[0]));
         fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-        goto uninit_vbo;
+        goto delete_fragment;
     }
 
     GLCALL(program = glCreateProgram());
@@ -132,7 +132,7 @@ int main() {
     if (length) {
         GLCALL(glGetProgramInfoLog(program, sizeof(error_log), NULL, &error_log[0]));
         fprintf(stderr, "Failed to compile fragment shader: %s", error_log);
-        goto uninit_vbo;
+        goto delete_program;
     }
 
     GLCALL(glUseProgram(program));
@@ -147,6 +147,15 @@ int main() {
     printf("%s\n", glGetString(GL_VERSION));
 
     printf("Hello World!\n");
+
+delete_program:
+    glDeleteProgram(program);
+
+delete_fragment:
+    glDeleteShader(fragment_shader);
+
+delete_vertex:
+    glDeleteShader(vertex_shader);
 
 uninit_vbo:
     glDeleteBuffers(1, &vbo);

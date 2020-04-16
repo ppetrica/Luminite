@@ -1,14 +1,16 @@
 #include "shader.h"
 #include "wrappers.h"
+
+#include <glm/gtx/transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <spdlog/spdlog.h>
+
 #include <cstdio>
 #include <string>
 #include <memory>
 #include <optional>
 #include <vector>
-#include <fstream>
-#include <filesystem>
-#include <glm/gtx/transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include <chrono>
 
 
 void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices);
@@ -22,36 +24,51 @@ static void APIENTRY debug_proc(GLenum source,
                          GLsizei length,
                          const GLchar* message,
                          const void* userParam) {
-    fprintf(stderr, "[%d] %d generated error %x: %s", severity, source, type, message);
+    spdlog::warn("[{}] {} generated error {}: {}", severity, source, type, message);
 }
 #endif // _DEBUG
 
 
+static void window_size_callback(GLFWwindow *window, int width, int height) {
+    glViewport(0, 0, width, height);
+}
+
+
 int main() {
     try {
+#ifdef _DEBUG
+        spdlog::set_level(spdlog::level::debug);
+#endif
+
         glfw_t glfw;
+        spdlog::info("Initialized GLFW");
 
         window_t window{ glfwCreateWindow(640, 480, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
         if (!window) {
-            fprintf(stderr, "Failed to create glfw window.\n");
+            spdlog::error("Failed to create glfw window.\n");
 
             const char* description;
             if (glfwGetError(&description) != GLFW_NO_ERROR) {
-                fprintf(stderr, "%s\n", description);
+                spdlog::error("{}\n", description);
             }
         }
+        spdlog::info("Created main window");
 
 #ifdef _DEBUG
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 #endif
         glfwMakeContextCurrent(window.get());
+        spdlog::info("Initialized OpenGL context");
+
+        glfwSetWindowSizeCallback(window.get(), window_size_callback);
 
         GLenum err = glewInit();
         if (err != GLEW_OK) {
-            fprintf(stderr, "Failed to initialize glew: %s", glewGetErrorString(err));
+            spdlog::error("Failed to initialize glew: {}", glewGetErrorString(err));
 
             return 1;
         }
+        spdlog::info("Initialized GLEW");
 
 #ifdef _DEBUG
         glDebugMessageCallback(debug_proc, NULL);
@@ -80,14 +97,15 @@ int main() {
         glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL);
 
         program_t program = load_program("vertex.glsl", "fragment.glsl");
+        spdlog::info("Created main GLSL program");
 
         run_main_loop(window.get(), program.get(), coords.size());
     } catch (const std::exception &ex) {
-        fprintf(stderr, "%s\n", ex.what());
+        spdlog::error("{}\n", ex.what());
 
         return 1;
     } catch (...) {
-        fprintf(stderr, "An exception has occured.\n");
+        spdlog::error("An exception has occured.\n");
         
         return 1;
     }
@@ -95,7 +113,9 @@ int main() {
 
 
 void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
-    static const char *MODEL_UNIFORM = "u_odel";
+    using namespace std::chrono_literals;
+    
+    static const char *MODEL_UNIFORM = "u_model";
 
     int model_location = glGetUniformLocation(program, MODEL_UNIFORM);
     if (model_location == -1)
@@ -104,12 +124,14 @@ void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
     float angle = 0.0f;
     glm::mat4 model;
 
+    std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
+        auto start_frame_ts = std::chrono::high_resolution_clock::now();
         glClear(GL_COLOR_BUFFER_BIT);
 
         model = glm::translate(glm::vec3{sin(angle) * 0.5f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        angle += 0.001f;
+        angle += 0.00001f * dt.count();
         if (angle > 2 * glm::pi<float>())
             angle = 0.0f;
 
@@ -119,5 +141,8 @@ void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices) {
 
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        dt = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_frame_ts);
+        spdlog::debug("Frame finished in {} microseconds.", dt.count());
     }
 }

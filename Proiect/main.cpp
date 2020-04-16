@@ -100,7 +100,9 @@ int main() {
             return 1;
         }
 
+#ifdef _DEBUG
         glDebugMessageCallback(debug_proc, NULL);
+#endif
 
         uint32_t handle;
         glGenVertexArrays(1, &handle);

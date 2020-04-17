@@ -1,5 +1,6 @@
 #include "shader.h"
 #include "wrappers.h"
+#include "loader.h"
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -30,6 +31,8 @@ static void APIENTRY debug_proc(GLenum source,
 
 
 static void window_size_callback(GLFWwindow *window, int width, int height) {
+    spdlog::info("Updating viewport to w: {} h: {}", width, height);
+
     glViewport(0, 0, width, height);
 }
 
@@ -45,11 +48,11 @@ int main() {
 
         window_t window{ glfwCreateWindow(640, 480, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
         if (!window) {
-            spdlog::error("Failed to create glfw window.\n");
+            spdlog::error("Failed to create glfw window.");
 
             const char* description;
             if (glfwGetError(&description) != GLFW_NO_ERROR) {
-                spdlog::error("{}\n", description);
+                spdlog::error("{}", description);
             }
         }
         spdlog::info("Created main window");
@@ -73,6 +76,7 @@ int main() {
 #ifdef _DEBUG
         glDebugMessageCallback(debug_proc, NULL);
 #endif
+        auto [indices, vertices, uvs, normals] = load_asset("monkey.obj");
 
         uint32_t handle;
         glGenVertexArrays(1, &handle);
@@ -85,27 +89,21 @@ int main() {
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
 
-        std::vector<glm::vec2> coords = {
-            {-0.5f, -0.5f},
-            { 0.0f,  0.5f},
-            { 0.5f, -0.5f}
-        };
-
-        glBufferData(GL_ARRAY_BUFFER, coords.size() * sizeof(coords[0]), &coords[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), &vertices[0], GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, 0, sizeof(coords[0]), NULL);
+        glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(vertices[0]), NULL);
 
         program_t program = load_program("vertex.glsl", "fragment.glsl");
         spdlog::info("Created main GLSL program");
 
-        run_main_loop(window.get(), program.get(), coords.size());
+        run_main_loop(window.get(), program.get(), vertices.size());
     } catch (const std::exception &ex) {
-        spdlog::error("{}\n", ex.what());
+        spdlog::error("{}", ex.what());
 
         return 1;
     } catch (...) {
-        spdlog::error("An exception has occured.\n");
+        spdlog::error("An exception has occured.");
         
         return 1;
     }

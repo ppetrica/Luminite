@@ -89,10 +89,17 @@ int main() {
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
 
+        vertices.reserve(vertices.size() + normals.size());
+
+        vertices.insert(vertices.end(), normals.begin(), normals.end());
+
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), &vertices[0], GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(vertices[0]), NULL);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(normals[0]), (const void *)(normals.size() * sizeof(normals[0])));
 
         program_t program = load_program("vertex.glsl", "fragment.glsl");
         spdlog::info("Created main GLSL program");
@@ -110,36 +117,45 @@ int main() {
 }
 
 
+static inline int get_location(uint32_t program, const char *uniform_name) {
+    int location = glGetUniformLocation(program, uniform_name);
+    if (location == -1)
+        throw gl_uniform_not_found_exception(uniform_name);
+}
+
+
 void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     using namespace std::chrono_literals;
 
-    static const char* MODEL_UNIFORM = "u_model";
+    int model_location = get_location(program, "u_model");
 
-    int model_location = glGetUniformLocation(program, MODEL_UNIFORM);
-    if (model_location == -1)
-        throw gl_uniform_not_found_exception(MODEL_UNIFORM);
+    int normal_location = get_location(program, "u_normal");
 
     float angle = 0.0f;
     glm::mat4 model;
+    glm::mat4 normal_matrix;
 
     int width, height;
     glfwGetWindowSize(window, &width, &height);
 
-    static const char* PROJ_UNIFORM = "u_proj";
-    int proj_location = glGetUniformLocation(program, PROJ_UNIFORM);
-    if (proj_location == -1)
-        throw gl_uniform_not_found_exception(PROJ_UNIFORM);
-
+    int proj_location = get_location(program, "u_proj");
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 100.0f);
 
     glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
 
-    static const char* VIEW_UNIFORM = "u_view";
-    int view_location = glGetUniformLocation(program, VIEW_UNIFORM);
-    if (view_location == -1)
-        throw gl_uniform_not_found_exception(VIEW_UNIFORM);
+    int view_location = get_location(program, "u_view");
 
-    glm::mat4 view = glm::lookAt(glm::vec3{4, 3, 3}, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
+    int viewpos_location = get_location(program, "u_viewpos");
+    
+    glm::vec3 view_pos{4, 3, 3};
+    
+    glUniform3fv(viewpos_location, 1, glm::value_ptr(view_pos));
+
+    int lightpos_location = get_location(program, "u_lightpos");
+
+    glUniform3fv(lightpos_location, 1, glm::value_ptr(view_pos));
+
+    glm::mat4 view = glm::lookAt(view_pos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
     glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -150,11 +166,11 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
         model = glm::translate(glm::vec3{sin(angle) * 3.0f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        angle += 0.00001f * dt.count();
-        if (angle > 2 * glm::pi<float>())
-            angle = 0.0f;
-
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+        
+        normal_matrix = glm::transpose(glm::inverse(model));
+        
+        glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
         glDrawArrays(GL_TRIANGLES, 0, n_vertices);
 
@@ -163,5 +179,9 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
         dt = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_frame_ts);
         spdlog::debug("Frame finished in {} microseconds.", dt.count());
+
+        angle += 0.00001f * dt.count();
+        if (angle > 2 * glm::pi<float>())
+            angle = 0.0f;
     }
 }

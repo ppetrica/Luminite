@@ -22,5 +22,5 @@ void main() {
 
     // TODO: these normal values seem to be wrong
     normal = vec3(u_normal * vec4(v_normal, 1));
-	pos = v_pos;
+    pos = v_pos;
 };

@@ -37,12 +37,55 @@ static void window_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 
+struct key_callback_data {
+    int view_location;
+    int viewpos_location;
+
+    glm::vec3 &viewpos;
+};
+
+
+static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+        spdlog::debug("Pressed key {}", key);
+
+        struct key_callback_data &data = *(struct key_callback_data *)glfwGetWindowUserPointer(window);
+        
+        switch (key) {
+        case GLFW_KEY_UP:
+            data.viewpos.y += 1.0f;
+            break;
+        case GLFW_KEY_DOWN:
+            data.viewpos.y -= 1.0f;
+            break;
+        case GLFW_KEY_RIGHT:
+            data.viewpos.x += 1.0f;
+            break;
+        case GLFW_KEY_LEFT:
+            data.viewpos.x -= 1.0f;
+            break;
+        case GLFW_KEY_PAGE_UP:
+            data.viewpos.z += 1.0f;
+            break;
+        case GLFW_KEY_PAGE_DOWN:
+            data.viewpos.z -= 1.0f;
+            break;
+        }
+
+        glUniform3fv(data.viewpos_location, 1, glm::value_ptr(data.viewpos));
+
+        glm::mat4 view = glm::lookAt(data.viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
+
+        glUniformMatrix4fv(data.view_location, 1, GL_FALSE, glm::value_ptr(view));
+    }
+}
+
+
 int main() {
     try {
 #ifdef _DEBUG
         spdlog::set_level(spdlog::level::debug);
 #endif
-
         glfw_t glfw;
         spdlog::info("Initialized GLFW");
 
@@ -54,7 +97,10 @@ int main() {
             if (glfwGetError(&description) != GLFW_NO_ERROR) {
                 spdlog::error("{}", description);
             }
+
+            return 1;
         }
+
         spdlog::info("Created main window");
 
 #ifdef _DEBUG
@@ -64,6 +110,8 @@ int main() {
         spdlog::info("Initialized OpenGL context");
 
         glfwSetWindowSizeCallback(window.get(), window_size_callback);
+
+        glfwSetKeyCallback(window.get(), key_callback);
 
         GLenum err = glewInit();
         if (err != GLEW_OK) {
@@ -120,7 +168,9 @@ int main() {
 static inline int get_location(uint32_t program, const char *uniform_name) {
     int location = glGetUniformLocation(program, uniform_name);
     if (location == -1)
-        throw gl_uniform_not_found_exception(uniform_name);
+        spdlog::warn("Uniform {} was not found in the program", uniform_name);
+
+    return location;
 }
 
 
@@ -146,25 +196,30 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     int view_location = get_location(program, "u_view");
 
     int viewpos_location = get_location(program, "u_viewpos");
+
+    glm::vec3 viewpos{0.0f, 0.0f, 30.0};
     
-    glm::vec3 view_pos{4, 3, 3};
-    
-    glUniform3fv(viewpos_location, 1, glm::value_ptr(view_pos));
+    glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
     int lightpos_location = get_location(program, "u_lightpos");
 
-    glUniform3fv(lightpos_location, 1, glm::value_ptr(view_pos));
+    glm::vec3 light_pos{-2000.0f, 0.0f, 0.0f};
+    glUniform3fv(lightpos_location, 1, glm::value_ptr(light_pos));
 
-    glm::mat4 view = glm::lookAt(view_pos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
+    glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
     glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
+
+    struct key_callback_data key_data{view_location, viewpos_location, viewpos};
+
+    glfwSetWindowUserPointer(window, &key_data);
 
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
         glClear(GL_COLOR_BUFFER_BIT);
 
-        model = glm::translate(glm::vec3{sin(angle) * 3.0f, 0.0f, 0.0f}) * glm::rotate(angle, glm::vec3{ 0.0f, 1.0f, 0.0f });
+        model = glm::rotate(glm::radians(180.0f), glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 0.0f, 1.0f });
 
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
         

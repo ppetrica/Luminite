@@ -167,6 +167,7 @@
     <None Include="vertex.glsl" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cube.h" />
     <ClInclude Include="loader.h" />
     <ClInclude Include="shader.h" />
     <ClInclude Include="wrappers.h" />

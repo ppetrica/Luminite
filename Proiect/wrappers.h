@@ -2,8 +2,8 @@
 
 
 #include <GL/glew.h>
-#include <GL/GL.h>
 #include <glfw/glfw3.h>
+#include <GL/GL.h>
 #include <cstdint>
 #include <memory>
 

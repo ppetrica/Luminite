@@ -1,5 +1,4 @@
 #include "shader.h"
-#include "wrappers.h"
 #include "loader.h"
 
 #include <glm/gtx/transform.hpp>
@@ -81,6 +80,12 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 }
 
 
+struct vertex {
+    glm::vec3 position;
+    glm::vec3 normal;
+};
+
+
 int main() {
     try {
 #ifdef _DEBUG
@@ -124,7 +129,51 @@ int main() {
 #ifdef _DEBUG
         glDebugMessageCallback(debug_proc, NULL);
 #endif
-        auto [indices, vertices, uvs, normals] = load_asset("monkey.obj");
+        glEnable(GL_DEPTH_TEST);
+
+        vertex vertices[] = {
+            {{-0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+            {{0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+            {{0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+            {{0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+            {{-0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+            {{-0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
+
+            {{-0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+            {{0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+            {{0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+            {{0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+            {{-0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+            {{-0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
+
+            {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
+            {{-0.5f,  0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
+            {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
+            {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
+            {{-0.5f, -0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
+            {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
+
+            {{0.5f,  0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
+            {{0.5f,  0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
+            {{0.5f, -0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
+            {{0.5f, -0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
+            {{0.5f, -0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
+            {{0.5f,  0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
+
+            {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
+            {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
+            {{0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
+            {{0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
+            {{-0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
+            {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
+
+            {{-0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}},
+            {{0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}},
+            {{0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
+            {{0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
+            {{-0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
+            {{-0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}}
+        };
 
         uint32_t handle;
         glGenVertexArrays(1, &handle);
@@ -137,22 +186,18 @@ int main() {
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
 
-        vertices.reserve(vertices.size() + normals.size());
-
-        vertices.insert(vertices.end(), normals.begin(), normals.end());
-
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), &vertices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices[0], GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(vertices[0]), NULL);
+        glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(vertex), NULL);
 
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(normals[0]), (const void *)(normals.size() * sizeof(normals[0])));
+        glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(vertex), (const void *)(sizeof(glm::vec3)));
 
         program_t program = load_program("vertex.glsl", "fragment.glsl");
         spdlog::info("Created main GLSL program");
 
-        run_main_loop(window.get(), program.get(), vertices.size());
+        run_main_loop(window.get(), program.get(), sizeof(vertices) / (6 * sizeof(float)));
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -197,13 +242,13 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
     int viewpos_location = get_location(program, "u_viewpos");
 
-    glm::vec3 viewpos{0.0f, 0.0f, 30.0};
+    glm::vec3 viewpos{-10.0f, 2.5f, 5.0};
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
     int lightpos_location = get_location(program, "u_lightpos");
 
-    glm::vec3 light_pos{-2000.0f, 0.0f, 0.0f};
+    glm::vec3 light_pos{-2000.0f, 500.0f, 1000.0f};
     glUniform3fv(lightpos_location, 1, glm::value_ptr(light_pos));
 
     glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
@@ -217,7 +262,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         model = glm::rotate(glm::radians(180.0f), glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 0.0f, 1.0f });
 

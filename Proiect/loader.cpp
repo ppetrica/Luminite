@@ -16,7 +16,17 @@ std::tuple<std::vector<unsigned short>,
 
 	Assimp::Importer importer;
 
-	const aiScene *scene = importer.ReadFile(path, 0);
+	const aiScene *scene = importer.ReadFile(path,
+		aiProcess_MakeLeftHanded |
+		aiProcess_FlipWindingOrder |
+		aiProcess_FlipUVs |
+		aiProcess_PreTransformVertices |
+		aiProcess_CalcTangentSpace |
+		aiProcess_GenSmoothNormals |
+		aiProcess_Triangulate |
+		aiProcess_FixInfacingNormals |
+		aiProcess_FindInvalidData |
+		aiProcess_ValidateDataStructure);
 	if(!scene) {
 		throw asset_error(path);
 	}
@@ -24,7 +34,7 @@ std::tuple<std::vector<unsigned short>,
 	const aiMesh* mesh = scene->mMeshes[0];
 
 	vertices.reserve(mesh->mNumVertices);
-	for(unsigned int i=0; i<mesh->mNumVertices; i++){
+	for( int i=0; i<mesh->mNumVertices; i++){
 		aiVector3D pos = mesh->mVertices[i];
 		vertices.push_back(glm::vec3(pos.x, pos.y, pos.z));
 	}

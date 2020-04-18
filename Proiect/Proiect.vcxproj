@@ -87,7 +87,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;GLEW_STATIC ;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\imgui\examples;$(SolutionDir)..\libraries\imgui;$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -104,7 +104,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;GLEW_STATIC ;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\imgui\examples;$(SolutionDir)..\libraries\imgui;$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -123,7 +123,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;GLEW_STATIC ;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\imgui\examples;$(SolutionDir)..\libraries\imgui;$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -144,7 +144,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;GLEW_STATIC ;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\libraries\imgui\examples;$(SolutionDir)..\libraries\imgui;$(SolutionDir)..\libraries\spdlog\include;$(SolutionDir)..\libraries\glm;$(SolutionDir)..\libraries\glew\include;$(SolutionDir)..\libraries\glfw\$(Platform)\include;</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -158,6 +158,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\libraries\imgui\examples\imgui_impl_glfw.cpp" />
+    <ClCompile Include="..\libraries\imgui\examples\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="..\libraries\imgui\imgui.cpp" />
+    <ClCompile Include="..\libraries\imgui\imgui_demo.cpp" />
+    <ClCompile Include="..\libraries\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\libraries\imgui\imgui_widgets.cpp" />
     <ClCompile Include="loader.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="shader.cpp" />
@@ -167,6 +173,7 @@
     <None Include="vertex.glsl" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cube.h" />
     <ClInclude Include="loader.h" />
     <ClInclude Include="shader.h" />
     <ClInclude Include="wrappers.h" />

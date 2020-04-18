@@ -20,7 +20,6 @@ out vec3 pos;
 void main() {
     gl_Position = u_proj * u_view * u_model * vec4(v_pos, 1.0f);
 
-    // TODO: these normal values seem to be wrong
-    normal = vec3(u_normal * vec4(v_normal, 1));
+    normal = vec3(normalize(u_normal * vec4(v_normal, 1)));
     pos = v_pos;
 };

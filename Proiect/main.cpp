@@ -1,9 +1,13 @@
 #include "shader.h"
 #include "loader.h"
+#include "cube.h"
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <spdlog/spdlog.h>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 
 #include <cstdio>
 #include <string>
@@ -80,9 +84,18 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 }
 
 
-struct vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
+struct imgui_context_t {
+    imgui_context_t(GLFWwindow *window, const char *glsl_version) {
+        ImGui::CreateContext();
+        ImGui_ImplGlfw_InitForOpenGL(window, false);
+        ImGui_ImplOpenGL3_Init(glsl_version);
+    }
+
+    ~imgui_context_t() {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    }
 };
 
 
@@ -94,7 +107,7 @@ int main() {
         glfw_t glfw;
         spdlog::info("Initialized GLFW");
 
-        window_t window{ glfwCreateWindow(640, 480, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
+        window_t window{ glfwCreateWindow(1080, 720, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
         if (!window) {
             spdlog::error("Failed to create glfw window.");
 
@@ -114,6 +127,10 @@ int main() {
         glfwMakeContextCurrent(window.get());
         spdlog::info("Initialized OpenGL context");
 
+        imgui_context_t imgui{window.get(), "#330"};
+
+        ImGui::StyleColorsDark();
+
         glfwSetWindowSizeCallback(window.get(), window_size_callback);
 
         glfwSetKeyCallback(window.get(), key_callback);
@@ -130,50 +147,6 @@ int main() {
         glDebugMessageCallback(debug_proc, NULL);
 #endif
         glEnable(GL_DEPTH_TEST);
-
-        vertex vertices[] = {
-            {{-0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-            {{0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-            {{0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-            {{0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-            {{-0.5f,  0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-            {{-0.5f, -0.5f, -0.5f}, {0.0f,  0.0f, -1.0f}},
-
-            {{-0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-            {{0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-            {{0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-            {{0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-            {{-0.5f,  0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-            {{-0.5f, -0.5f,  0.5f}, {0.0f,  0.0f,  1.0f}},
-
-            {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
-            {{-0.5f,  0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
-            {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
-            {{-0.5f, -0.5f, -0.5f}, {-1.0f,  0.0f,  0.0f}},
-            {{-0.5f, -0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
-            {{-0.5f,  0.5f,  0.5f}, {-1.0f,  0.0f,  0.0f}},
-
-            {{0.5f,  0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
-            {{0.5f,  0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
-            {{0.5f, -0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
-            {{0.5f, -0.5f, -0.5f},  {1.0f,  0.0f,  0.0f}},
-            {{0.5f, -0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
-            {{0.5f,  0.5f,  0.5f},  {1.0f,  0.0f,  0.0f}},
-
-            {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
-            {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
-            {{0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
-            {{0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
-            {{-0.5f, -0.5f,  0.5f}, {0.0f, -1.0f,  0.0f}},
-            {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f,  0.0f}},
-
-            {{-0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}},
-            {{0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}},
-            {{0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
-            {{0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
-            {{-0.5f,  0.5f,  0.5f},  {0.0f,  1.0f,  0.0f}},
-            {{-0.5f,  0.5f, -0.5f},  {0.0f,  1.0f,  0.0f}}
-        };
 
         uint32_t handle;
         glGenVertexArrays(1, &handle);
@@ -246,10 +219,10 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
-    int lightpos_location = get_location(program, "u_lightpos");
+    int lightdir_location = get_location(program, "u_lightdir");
 
-    glm::vec3 light_pos{-2000.0f, 500.0f, 1000.0f};
-    glUniform3fv(lightpos_location, 1, glm::value_ptr(light_pos));
+    glm::vec3 lightdir{-10.0f, -2.5f, -5.0f};
+    glUniform3fv(lightdir_location, 1, glm::value_ptr(lightdir));
 
     glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
@@ -259,26 +232,56 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
     glfwSetWindowUserPointer(window, &key_data);
 
+    glm::vec3 clear_color {0.0f};
+
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
+        glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        model = glm::rotate(glm::radians(180.0f), glm::vec3{ 1.0f, 0.0f, 0.0f }) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 0.0f, 1.0f });
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        
+        static float f = 0.0f;
+        static int counter = 0;
+        bool test;
+
+        ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+        ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+        ImGui::Checkbox("Another Window", &test);
+
+        ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+        ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+        if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+            counter++;
+        ImGui::SameLine();
+        ImGui::Text("counter = %d", counter);
+
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::End();
+
+        model = glm::mat4(1.0f);
 
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
-        
+
         normal_matrix = glm::transpose(glm::inverse(model));
-        
+
         glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
         glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+
+        ImGui::Render();
+        
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
         glfwPollEvents();
 
         dt = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_frame_ts);
-        spdlog::debug("Frame finished in {} microseconds.", dt.count());
 
         angle += 0.00001f * dt.count();
         if (angle > 2 * glm::pi<float>())

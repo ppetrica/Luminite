@@ -27,7 +27,7 @@ std::tuple<std::vector<unsigned short>,
 		aiProcess_FixInfacingNormals |
 		aiProcess_FindInvalidData |
 		aiProcess_ValidateDataStructure);
-	if(!scene) {
+	if(!scene) {	
 		throw asset_error(path);
 	}
 
@@ -54,7 +54,6 @@ std::tuple<std::vector<unsigned short>,
 		aiVector3D n = mesh->mNormals[i];
 		normals.push_back(glm::vec3(n.x, n.y, n.z));
 	}
-
 
 	indices.reserve(3*mesh->mNumFaces);
 	for (unsigned int i=0; i<mesh->mNumFaces; i++){

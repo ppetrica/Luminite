@@ -215,7 +215,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
     int viewpos_location = get_location(program, "u_viewpos");
 
-    glm::vec3 viewpos{-10.0f, 2.5f, 5.0};
+    glm::vec3 viewpos{5.0f, 2.5f, 10.0f};
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 

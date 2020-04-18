@@ -16,7 +16,7 @@ void main() {
 	vec3 object_color = vec3(0.8, 0.2, 0.2);
 	vec3 ambient = vec3(0.3);
 	
-	vec3 ambient_color = ambient * object_color;
+	vec3 ambient_component = ambient * object_color;
 	
 	vec3 L = normalize(u_lightdir - pos);
 
@@ -25,8 +25,14 @@ void main() {
 	vec3 reflectdir = normalize(reflect(-u_lightdir, normal));
 
 	float spec = pow(max(dot(viewdir, reflectdir), 0.0), 8);
-	
-	vec3 color = min((ambient_color + dot(L, normal) + 0.5 * spec) * object_color, 1.0); 
+
+	float diffuse_component = max(dot(L, normal), 0.0);
+
+	float specular_component = max(0.5 * spec, 0.0);
+
+	vec3 final_color = (ambient_component + diffuse_component + specular_component) * object_color;
+
+	vec3 color = min(final_color, 1.0); 
 
 	fragColor = vec4(color, 1.0);
 }

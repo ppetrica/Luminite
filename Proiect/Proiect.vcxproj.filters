@@ -58,6 +58,12 @@
     <None Include="lightVertex.glsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="monkeyVertex.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="monkeyFragment.glsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="wrappers.h">

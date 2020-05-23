@@ -172,6 +172,8 @@
     <None Include="fragment.glsl" />
     <None Include="lightFragment.glsl" />
     <None Include="lightVertex.glsl" />
+    <None Include="monkeyFragment.glsl" />
+    <None Include="monkeyVertex.glsl" />
     <None Include="vertex.glsl" />
   </ItemGroup>
   <ItemGroup>

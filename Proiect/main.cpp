@@ -17,7 +17,9 @@
 #include <chrono>
 
 
-void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program, uint32_t n_vertices);
+void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program,
+                   uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
+                   uint32_t monkey_program, std::vector<unsigned short> &monkey_indices);
 
 
 #ifdef _DEBUG
@@ -93,6 +95,26 @@ struct imgui_context_t {
 };
 
 
+struct transform {
+    glm::vec3 position;
+    glm::vec3 rotation;
+    glm::vec3 scale;
+
+    glm::mat4 to_model() const {
+        return glm::translate(position)
+            * glm::rotate(glm::radians(rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
+            * glm::rotate(glm::radians(rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
+            * glm::rotate(glm::radians(rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
+            * glm::scale(scale);
+    }
+};
+
+struct model {
+    uint32_t vao;
+    uint32_t shader;
+    uint32_t n_points;
+};
+
 int main() {
     try {
 #ifdef _DEBUG
@@ -144,14 +166,14 @@ int main() {
 
         uint32_t handle;
         glGenVertexArrays(1, &handle);
-        vertex_array_t vao{ handle };
+        vertex_array_t cube_vao{ handle };
 
-        glBindVertexArray(vao.get());
+        glBindVertexArray(cube_vao.get());
 
         glGenBuffers(1, &handle);
-        buffer_t vbo{ handle };
+        buffer_t cube_vbo{ handle };
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
+        glBindBuffer(GL_ARRAY_BUFFER, cube_vbo.get());
 
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices[0], GL_STATIC_DRAW);
 
@@ -167,7 +189,41 @@ int main() {
         program_t light_program = load_program("lightVertex.glsl", "lightFragment.glsl");
         spdlog::info("Created light program");
 
-        run_main_loop(window.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)));
+        /* Loading and creating monkey model */
+        auto [monkey_vertices, monkey_indices] = loader::load_asset("monkey.obj");
+        
+        glGenVertexArrays(1, &handle);
+        vertex_array_t monkey_vao{ handle };
+
+        glBindVertexArray(monkey_vao.get());
+
+        glGenBuffers(1, &handle);
+        buffer_t monkey_vbo{ handle };
+
+        glGenBuffers(1, &handle);
+        buffer_t monkey_ibo{ handle };
+
+        glBindBuffer(GL_ARRAY_BUFFER, monkey_vbo.get());
+
+        glBufferData(GL_ARRAY_BUFFER, monkey_vertices.size() * sizeof(monkey_vertices[0]), monkey_vertices.data(), GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(loader::vertex), NULL);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(sizeof(glm::vec3)));
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(2 * sizeof(glm::vec3)));
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, monkey_ibo.get());
+        
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, monkey_indices.size() * sizeof(monkey_indices[0]), monkey_indices.data(), GL_STATIC_DRAW);
+
+        program_t monkey_program = load_program("monkeyVertex.glsl", "monkeyFragment.glsl");
+
+        run_main_loop(window.get(), cube_vao.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)),
+                      monkey_vao.get(), monkey_program.get(), monkey_indices);
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -189,12 +245,9 @@ static inline int get_location(uint32_t program, const char *uniform_name) {
 }
 
 
-void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program, uint32_t n_vertices) {
+void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
+                   uint32_t monkey_program, std::vector<unsigned short> &monkey_indices) {
     using namespace std::chrono_literals;
-
-    float angle = 0.0f;
-    glm::mat4 model;
-    glm::mat4 normal_matrix;
 
     int width, height;
     glfwGetWindowSize(window, &width, &height);
@@ -212,6 +265,17 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
     int light_model_location = get_location(light_program, "u_model");
     int light_proj_location = get_location(light_program, "u_proj");
     int light_view_location = get_location(light_program, "u_view");
+
+    int monkey_model_location = get_location(monkey_program, "u_model");
+    int monkey_proj_location = get_location(monkey_program, "u_proj");
+    int monkey_view_location = get_location(monkey_program, "u_view");
+    int monkey_viewpos_location = get_location(program, "u_viewpos");
+    int monkey_lightdir_location = get_location(program, "u_lightpos");
+    int monkey_normal_location = get_location(program, "u_normal");
+
+    glUseProgram(monkey_program);
+
+    glUniformMatrix4fv(monkey_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
     
     glUseProgram(light_program);
 
@@ -236,9 +300,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
     glm::vec3 clear_color {0.0f};
     glm::vec3 cube_color{ 1.0f, 0.5f, 0.0f };
 
-    glm::vec3 cube_position { 0.5f };
-    glm::vec3 cube_rotation { 0.0f };
-    glm::vec3 cube_scale{ 1.0f };
+    transform cube{ glm::vec3{0.5f}, glm::vec3{0.0f}, glm::vec3{1.0f} };
 
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
@@ -257,11 +319,11 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
 
         ImGui::ColorEdit3("clear color", (float*)&clear_color);
         
-        ImGui::DragFloat3("cube position", (float*)&cube_position);
+        ImGui::DragFloat3("cube position", (float*)&cube.position);
 
-        ImGui::DragFloat3("cube scale", (float*)&cube_scale);
+        ImGui::DragFloat3("cube scale", (float*)&cube.scale);
 
-        ImGui::DragFloat3("cube rotation", (float*)&cube_rotation);
+        ImGui::DragFloat3("cube rotation", (float*)&cube.rotation);
 
         ImGui::ColorEdit3("cube color", (float*)&cube_color);
 
@@ -271,6 +333,8 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
+
+        glBindVertexArray(cube_vao);
 
         glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
 
@@ -284,15 +348,11 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
 
         /* First cube */
         {
-            model = glm::translate(cube_position)
-                * glm::rotate(glm::radians(cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
-                * glm::rotate(glm::radians(cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
-                * glm::rotate(glm::radians(cube_rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
-                * glm::scale(cube_scale);
+            auto model = cube.to_model();
 
             glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
 
-            normal_matrix = glm::transpose(glm::inverse(model));
+            auto normal_matrix = glm::transpose(glm::inverse(model));
 
             glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
@@ -301,18 +361,15 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
 
         /* Second cube */
         {
+            transform cube2 {-cube.position, -cube.rotation, cube.scale };
             glm::vec3 cube_color2 {1.0 - cube_color.r, 1.0 - cube_color.g, 1.0 - cube_color.g};
             glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color2));
             
-            model = glm::translate(-cube_position)
-                * glm::rotate(glm::radians(-cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
-                * glm::rotate(glm::radians(-cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
-                * glm::rotate(glm::radians(-cube_rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
-                * glm::scale(cube_scale);
+            auto model = cube2.to_model();
 
             glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
 
-            normal_matrix = glm::transpose(glm::inverse(model));
+            auto normal_matrix = glm::transpose(glm::inverse(model));
 
             glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
@@ -324,11 +381,37 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
         {
             glUniformMatrix4fv(light_view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-            model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.2 });
+            auto model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.2f });
 
             glUniformMatrix4fv(light_model_location, 1, GL_FALSE, glm::value_ptr(model));
 
             glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        }
+
+        glUseProgram(monkey_program);
+        
+        glUniform3fv(monkey_lightdir_location, 1, glm::value_ptr(lightpos));
+
+        glUniform3fv(monkey_viewpos_location, 1, glm::value_ptr(viewpos));
+
+        glUniformMatrix4fv(monkey_view_location, 1, GL_FALSE, glm::value_ptr(view));
+
+        /* Monkey */
+        {
+            glBindVertexArray(monkey_vao);
+
+            glm::vec3 monkey_pos{3.0f, 1.0f, 1.0f};
+            glUniformMatrix4fv(monkey_view_location, 1, GL_FALSE, glm::value_ptr(view));
+
+            auto model = glm::translate(monkey_pos) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(glm::vec3{ 0.6 });
+
+            glUniformMatrix4fv(monkey_model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+            auto normal_matrix = glm::transpose(glm::inverse(model));
+
+            glUniformMatrix4fv(monkey_normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+
+            glDrawElements(GL_TRIANGLES, monkey_indices.size(), GL_UNSIGNED_SHORT, NULL);
         }
         glUseProgram(program);
         

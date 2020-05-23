@@ -7,8 +7,8 @@
 
 namespace loader {
 
-std::pair<std::vector<vertex>, std::vector<unsigned short>> load_asset(const char* path) {
-	std::vector<unsigned short> indices;
+std::pair<std::vector<vertex>, std::vector<unsigned int>> load_asset(const char* path) {
+	std::vector<unsigned int> indices;
 	std::vector<vertex> vertices;
 
 	Assimp::Importer importer;

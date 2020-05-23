@@ -24,6 +24,6 @@ struct vertex {
     glm::vec2 uvs;
 };
 
-std::pair<std::vector<vertex>, std::vector<unsigned short>> load_asset(const char* path);
+std::pair<std::vector<vertex>, std::vector<unsigned int>> load_asset(const char* path);
 
 }

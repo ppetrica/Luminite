@@ -12,6 +12,8 @@ out vec4 fragColor;
 uniform vec3 u_lightpos;
 uniform vec3 u_viewpos;
 
+uniform sampler2D u_ferrari_tex;
+
 
 struct point_light {
 	vec3 position;
@@ -53,7 +55,7 @@ void main() {
 
 	float specular_component = max(0.5 * spec, 0.0);
 
-	vec3 final_color = (ambient_component + diffuse_component + specular_component) * vec3(1.0f) * attenuation;
+	vec3 final_color = (ambient_component + diffuse_component + specular_component) * texture(u_ferrari_tex, uv_coords).rgb * attenuation;
 
 	vec3 color = min(final_color, 1.0);
 

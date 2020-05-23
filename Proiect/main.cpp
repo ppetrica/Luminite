@@ -9,6 +9,9 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <cstdio>
 #include <string>
 #include <memory>
@@ -19,7 +22,7 @@
 
 void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program,
                    uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
-                   uint32_t monkey_program, std::vector<unsigned short> &monkey_indices);
+                   uint32_t monkey_program, std::vector<unsigned int> &monkey_indices);
 
 
 #ifdef _DEBUG
@@ -190,7 +193,7 @@ int main() {
         spdlog::info("Created light program");
 
         /* Loading and creating monkey model */
-        auto [monkey_vertices, monkey_indices] = loader::load_asset("monkey.obj");
+        auto [monkey_vertices, monkey_indices] = loader::load_asset("ferrari.obj");
         
         glGenVertexArrays(1, &handle);
         vertex_array_t monkey_vao{ handle };
@@ -222,6 +225,38 @@ int main() {
 
         program_t monkey_program = load_program("monkeyVertex.glsl", "monkeyFragment.glsl");
 
+        GLuint ferrari_texture;
+
+        glGenTextures(1, &ferrari_texture);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, ferrari_texture);
+
+        int width, height, nrChannels;
+        unsigned char *data;
+        int location;
+
+        data = stbi_load("ferrari.png", &width, &height, &nrChannels, 0);
+        if (data)
+        {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+                GL_UNSIGNED_BYTE, data);
+            glGenerateMipmap(GL_TEXTURE_2D);
+        }
+        else
+        {
+            throw std::exception("Failed to load texture");
+        }
+        stbi_image_free(data);
+
+        location = glGetUniformLocation(monkey_program.get(), "u_ferrari_tex");
+        glUniform1i(location, 0);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIPMAP);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIPMAP);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
         run_main_loop(window.get(), cube_vao.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)),
                       monkey_vao.get(), monkey_program.get(), monkey_indices);
     } catch (const std::exception &ex) {
@@ -246,7 +281,7 @@ static inline int get_location(uint32_t program, const char *uniform_name) {
 
 
 void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
-                   uint32_t monkey_program, std::vector<unsigned short> &monkey_indices) {
+                   uint32_t monkey_program, std::vector<unsigned int> &monkey_indices) {
     using namespace std::chrono_literals;
 
     int width, height;
@@ -285,11 +320,11 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
 
     glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
 
-    glm::vec3 viewpos{5.0f, 2.5f, 10.0f};
+    glm::vec3 viewpos{4.0f, 2.5f, 13.0f};
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
-    glm::vec3 lightpos{3.0, 2.5, 4.0};
+    glm::vec3 lightpos{3.0, -0.5, 3.0};
     
     glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
 
@@ -403,7 +438,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
             glm::vec3 monkey_pos{3.0f, 1.0f, 1.0f};
             glUniformMatrix4fv(monkey_view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-            auto model = glm::translate(monkey_pos) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(glm::vec3{ 0.6 });
+            auto model = glm::translate(monkey_pos) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(glm::vec3{ 0.01 });
 
             glUniformMatrix4fv(monkey_model_location, 1, GL_FALSE, glm::value_ptr(model));
 
@@ -411,7 +446,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
 
             glUniformMatrix4fv(monkey_normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
-            glDrawElements(GL_TRIANGLES, monkey_indices.size(), GL_UNSIGNED_SHORT, NULL);
+            glDrawElements(GL_TRIANGLES, monkey_indices.size(), GL_UNSIGNED_INT, NULL);
         }
         glUseProgram(program);
         

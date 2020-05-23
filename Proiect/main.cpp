@@ -74,8 +74,6 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
             data.viewpos.z -= 1.0f;
             break;
         }
-
-
     }
 }
 
@@ -236,7 +234,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
     glfwSetWindowUserPointer(window, &key_data);
 
     glm::vec3 clear_color {0.0f};
-    glm::vec3 cube_color{ 1.0f };
+    glm::vec3 cube_color{ 1.0f, 0.5f, 0.0f };
 
     glm::vec3 cube_position { 0.5f };
     glm::vec3 cube_rotation { 0.0f };
@@ -303,6 +301,9 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program,
 
         /* Second cube */
         {
+            glm::vec3 cube_color2 {1.0 - cube_color.r, 1.0 - cube_color.g, 1.0 - cube_color.g};
+            glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color2));
+            
             model = glm::translate(-cube_position)
                 * glm::rotate(glm::radians(-cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
                 * glm::rotate(glm::radians(-cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })

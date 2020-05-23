@@ -21,5 +21,5 @@ void main() {
     gl_Position = u_proj * u_view * u_model * vec4(v_pos, 1.0f);
 
     normal = vec3(normalize(u_normal * vec4(v_normal, 1)));
-    pos = v_pos;
+    pos = vec3(u_model * vec4(v_pos, 1.0));
 };

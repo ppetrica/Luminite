@@ -215,10 +215,10 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
-    int lightdir_location = get_location(program, "u_lightdir");
+    int lightdir_location = get_location(program, "u_lightpos");
 
-    glm::vec3 lightdir{-10.0f, -2.5f, -5.0f};
-    glUniform3fv(lightdir_location, 1, glm::value_ptr(lightdir));
+    glm::vec3 lightpos{3.0, 2.5, 4.0};
+    glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
 
     glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
@@ -262,14 +262,14 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
 
         ImGui::ColorEdit3("cube color", (float*)&cube_color);
 
-        ImGui::DragFloat3("light direction", (float*)&lightdir);
+        ImGui::DragFloat3("light position", (float*)&lightpos);
 
         ImGui::DragFloat3("viewer position", (float*)&viewpos);
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
 
-        glUniform3fv(lightdir_location, 1, glm::value_ptr(lightdir));
+        glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
 
         glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color));
 
@@ -278,21 +278,53 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
         glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
         glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
-        
-        model = glm::translate(cube_position)
-            * glm::rotate(glm::radians(cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
-            * glm::rotate(glm::radians(cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
-            * glm::rotate(glm::radians(cube_rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
-            * glm::scale(cube_scale);
 
-        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+        /* First cube */
+        {
+            model = glm::translate(cube_position)
+                * glm::rotate(glm::radians(cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
+                * glm::rotate(glm::radians(cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
+                * glm::rotate(glm::radians(cube_rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
+                * glm::scale(cube_scale);
 
-        normal_matrix = glm::transpose(glm::inverse(model));
+            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
 
-        glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+            normal_matrix = glm::transpose(glm::inverse(model));
 
-        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
+            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        }
+
+        /* Second cube */
+        {
+            model = glm::translate(-cube_position)
+                * glm::rotate(glm::radians(-cube_rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
+                * glm::rotate(glm::radians(-cube_rotation.y), glm::vec3{ 0.0f, 1.0f, 0.0f })
+                * glm::rotate(glm::radians(-cube_rotation.z), glm::vec3{ 0.0f, 1.0f, 1.0f })
+                * glm::scale(cube_scale);
+
+            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+            normal_matrix = glm::transpose(glm::inverse(model));
+
+            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+
+            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        }
+
+        /* Light cube */
+        {
+            model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.3 });
+
+            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+            normal_matrix = glm::transpose(glm::inverse(model));
+
+            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+
+            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        }
         ImGui::Render();
         
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

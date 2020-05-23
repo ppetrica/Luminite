@@ -52,6 +52,12 @@
     <None Include="fragment.glsl">
       <Filter>shaders</Filter>
     </None>
+    <None Include="lightFragment.glsl">
+      <Filter>shaders</Filter>
+    </None>
+    <None Include="lightVertex.glsl">
+      <Filter>shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="wrappers.h">

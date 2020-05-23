@@ -8,7 +8,7 @@ in vec3 pos;
 out vec4 fragColor;
 
 
-uniform vec3 u_lightdir;
+uniform vec3 u_lightpos;
 uniform vec3 u_cubecolor;
 uniform vec3 u_viewpos;
 
@@ -29,13 +29,10 @@ struct point_light {
 void main() {
 	point_light light;
 	
-	light.position = u_lightdir;
+	light.position = u_lightpos;
 	light.constant = 1.0f;
 	light.linear = 0.09f;
 	light.quadratic = 0.032f;
-
-	float distance = length(light.position - pos);
-	float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
 
 	vec3 ambient = vec3(0.3);
 
@@ -48,6 +45,9 @@ void main() {
 	vec3 reflectdir = normalize(reflect(-light.position, normal));
 
 	float spec = pow(max(dot(viewdir, reflectdir), 0.0), 32);
+
+	float distance = length(light.position - pos);
+	float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));    
 
 	float diffuse_component = max(dot(L, normal), 0.0);
 

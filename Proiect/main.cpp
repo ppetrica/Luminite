@@ -17,7 +17,7 @@
 #include <chrono>
 
 
-void run_main_loop(GLFWwindow *window, uint32_t program, uint32_t n_vertices);
+void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program, uint32_t n_vertices);
 
 
 #ifdef _DEBUG
@@ -166,7 +166,10 @@ int main() {
         program_t program = load_program("vertex.glsl", "fragment.glsl");
         spdlog::info("Created main GLSL program");
 
-        run_main_loop(window.get(), program.get(), sizeof(vertices) / (6 * sizeof(float)));
+        program_t light_program = load_program("lightVertex.glsl", "lightFragment.glsl");
+        spdlog::info("Created light program");
+
+        run_main_loop(window.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)));
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -188,12 +191,8 @@ static inline int get_location(uint32_t program, const char *uniform_name) {
 }
 
 
-void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
+void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t light_program, uint32_t n_vertices) {
     using namespace std::chrono_literals;
-
-    int model_location = get_location(program, "u_model");
-
-    int normal_location = get_location(program, "u_normal");
 
     float angle = 0.0f;
     glm::mat4 model;
@@ -202,38 +201,44 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
     int width, height;
     glfwGetWindowSize(window, &width, &height);
 
-    int proj_location = get_location(program, "u_proj");
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 100.0f);
 
-    glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
-
+    int model_location = get_location(program, "u_model");
+    int normal_location = get_location(program, "u_normal");
+    int proj_location = get_location(program, "u_proj");
     int view_location = get_location(program, "u_view");
-
     int viewpos_location = get_location(program, "u_viewpos");
+    int lightdir_location = get_location(program, "u_lightpos");
+    int cubecolor_location = get_location(program, "u_cubecolor");
+
+    int light_model_location = get_location(light_program, "u_model");
+    int light_proj_location = get_location(light_program, "u_proj");
+    int light_view_location = get_location(light_program, "u_view");
+    
+    glUseProgram(light_program);
+
+    glUniformMatrix4fv(light_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
+    
+    glUseProgram(program);
+
+    glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
 
     glm::vec3 viewpos{5.0f, 2.5f, 10.0f};
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
-    int lightdir_location = get_location(program, "u_lightpos");
-
     glm::vec3 lightpos{3.0, 2.5, 4.0};
+    
     glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
 
-    glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
-
-    glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
-
     struct key_callback_data key_data{view_location, viewpos_location, viewpos};
-
-    int cubecolor_location = get_location(program, "u_cubecolor");
 
     glfwSetWindowUserPointer(window, &key_data);
 
     glm::vec3 clear_color {0.0f};
     glm::vec3 cube_color{ 1.0f };
 
-    glm::vec3 cube_position { 0.0f };
+    glm::vec3 cube_position { 0.5f };
     glm::vec3 cube_rotation { 0.0f };
     glm::vec3 cube_scale{ 1.0f };
 
@@ -313,18 +318,19 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t n_vertices) {
             glDrawArrays(GL_TRIANGLES, 0, n_vertices);
         }
 
+        glUseProgram(light_program);
         /* Light cube */
         {
-            model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.3 });
+            glUniformMatrix4fv(light_view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+            model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.2 });
 
-            normal_matrix = glm::transpose(glm::inverse(model));
-
-            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+            glUniformMatrix4fv(light_model_location, 1, GL_FALSE, glm::value_ptr(model));
 
             glDrawArrays(GL_TRIANGLES, 0, n_vertices);
         }
+        glUseProgram(program);
+        
         ImGui::Render();
         
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

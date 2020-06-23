@@ -1,6 +1,7 @@
 #include "shader.h"
 #include "loader.h"
 #include "cube.h"
+#include "euler_angle.h"
 
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -21,8 +22,8 @@
 
 
 void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program,
-                   uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
-                   uint32_t monkey_program, std::vector<unsigned int> &monkey_indices);
+                   uint32_t light_program, uint32_t n_vertices, uint32_t ferrari_vao,
+                   uint32_t ferrari_program, std::vector<unsigned int> &ferrari_indices);
 
 
 #ifdef _DEBUG
@@ -50,6 +51,13 @@ struct key_callback_data {
     int viewpos_location;
 
     glm::vec3 &viewpos;
+    glm::vec3 &forward;
+
+    bool mouse_enabled;
+    glm::vec3 last_forward;
+
+    double &last_xpos;
+    double &last_ypos;
 };
 
 
@@ -59,27 +67,86 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 
         struct key_callback_data &data = *(struct key_callback_data *)glfwGetWindowUserPointer(window);
         
+        glm::vec3 xvec{ 0.0f };
+        glm::vec3 yvec{ 0.0f };
+        glm::vec3 zvec{ 0.0f };
+
         switch (key) {
-        case GLFW_KEY_UP:
-            data.viewpos.y += 1.0f;
+        case GLFW_KEY_SPACE:
+            yvec = glm::vec3{ 0, 0.3f, 0 };
             break;
-        case GLFW_KEY_DOWN:
-            data.viewpos.y -= 1.0f;
+        case GLFW_KEY_X:
+            yvec = glm::vec3{ 0, -0.3f, 0 };
             break;
-        case GLFW_KEY_RIGHT:
-            data.viewpos.x += 1.0f;
+        case GLFW_KEY_A:
+            xvec = 0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
             break;
-        case GLFW_KEY_LEFT:
-            data.viewpos.x -= 1.0f;
+        case GLFW_KEY_D:
+            xvec = -0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
             break;
-        case GLFW_KEY_PAGE_UP:
-            data.viewpos.z += 1.0f;
+        case GLFW_KEY_W:
+            zvec = 0.3f * data.forward;
             break;
-        case GLFW_KEY_PAGE_DOWN:
-            data.viewpos.z -= 1.0f;
+        case GLFW_KEY_S:
+            zvec = -0.3f * data.forward;
             break;
+        case GLFW_KEY_ESCAPE:
+            if (data.mouse_enabled) {
+                data.last_forward = data.forward;
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                glfwGetCursorPos(window, &data.last_xpos, &data.last_ypos);
+
+                int width, height;
+                glfwGetWindowSize(window, &width, &height);
+                data.last_xpos /= width;
+                data.last_ypos /= height;
+            }
+            else {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+            data.mouse_enabled ^= 1;
         }
+
+        glm::vec3 dif = yvec - xvec + zvec;
+        data.viewpos += dif;
     }
+}
+
+texture_t load_texture(const std::string &path, unsigned int slot, bool invert) {
+    GLuint ferrari_texture;
+
+    glGenTextures(1, &ferrari_texture);
+
+    glActiveTexture(slot);
+    glBindTexture(GL_TEXTURE_2D, ferrari_texture);
+
+    if (invert) {
+        stbi_set_flip_vertically_on_load(1);
+    }
+    else {
+        stbi_set_flip_vertically_on_load(0);
+    }
+
+    int width, height, nrChannels;
+    unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+            GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        throw std::exception("Failed to load texture");
+    }
+    stbi_image_free(data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIPMAP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIPMAP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    return texture_t{ ferrari_texture };
 }
 
 
@@ -117,6 +184,16 @@ struct model {
     uint32_t shader;
     uint32_t n_points;
 };
+
+
+static inline int get_location(uint32_t program, const char *uniform_name) {
+    int location = glGetUniformLocation(program, uniform_name);
+    if (location == -1)
+        spdlog::warn("Uniform {} was not found in the program", uniform_name);
+
+    return location;
+}
+
 
 int main() {
     try {
@@ -192,23 +269,23 @@ int main() {
         program_t light_program = load_program("lightVertex.glsl", "lightFragment.glsl");
         spdlog::info("Created light program");
 
-        /* Loading and creating monkey model */
-        auto [monkey_vertices, monkey_indices] = loader::load_asset("ferrari.obj");
+        /* Loading and creating ferrari model */
+        auto [ferrari_vertices, ferrari_indices] = loader::load_asset("cube.obj");
         
         glGenVertexArrays(1, &handle);
-        vertex_array_t monkey_vao{ handle };
+        vertex_array_t ferrari_vao{ handle };
 
-        glBindVertexArray(monkey_vao.get());
-
-        glGenBuffers(1, &handle);
-        buffer_t monkey_vbo{ handle };
+        glBindVertexArray(ferrari_vao.get());
 
         glGenBuffers(1, &handle);
-        buffer_t monkey_ibo{ handle };
+        buffer_t ferrari_vbo{ handle };
 
-        glBindBuffer(GL_ARRAY_BUFFER, monkey_vbo.get());
+        glGenBuffers(1, &handle);
+        buffer_t ferrari_ibo{ handle };
 
-        glBufferData(GL_ARRAY_BUFFER, monkey_vertices.size() * sizeof(monkey_vertices[0]), monkey_vertices.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, ferrari_vbo.get());
+
+        glBufferData(GL_ARRAY_BUFFER, ferrari_vertices.size() * sizeof(ferrari_vertices[0]), ferrari_vertices.data(), GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(loader::vertex), NULL);
@@ -219,46 +296,19 @@ int main() {
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(2 * sizeof(glm::vec3)));
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, monkey_ibo.get());
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ferrari_ibo.get());
         
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, monkey_indices.size() * sizeof(monkey_indices[0]), monkey_indices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, ferrari_indices.size() * sizeof(ferrari_indices[0]), ferrari_indices.data(), GL_STATIC_DRAW);
 
-        program_t monkey_program = load_program("monkeyVertex.glsl", "monkeyFragment.glsl");
+        program_t ferrari_program = load_program("ferrariVertex.glsl", "ferrariFragment.glsl");
 
-        GLuint ferrari_texture;
 
-        glGenTextures(1, &ferrari_texture);
+        texture_t texture = load_texture("brickwall.jpg", GL_TEXTURE0, false);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ferrari_texture);
-
-        int width, height, nrChannels;
-        unsigned char *data;
-        int location;
-
-        data = stbi_load("ferrari.png", &width, &height, &nrChannels, 0);
-        if (data)
-        {
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
-                GL_UNSIGNED_BYTE, data);
-            glGenerateMipmap(GL_TEXTURE_2D);
-        }
-        else
-        {
-            throw std::exception("Failed to load texture");
-        }
-        stbi_image_free(data);
-
-        location = glGetUniformLocation(monkey_program.get(), "u_ferrari_tex");
-        glUniform1i(location, 0);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIPMAP);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIPMAP);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glUniform1i(get_location(ferrari_program.get(), "u_ferrari_tex"), 0);
 
         run_main_loop(window.get(), cube_vao.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)),
-                      monkey_vao.get(), monkey_program.get(), monkey_indices);
+                      ferrari_vao.get(), ferrari_program.get(), ferrari_indices);
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -271,17 +321,8 @@ int main() {
 }
 
 
-static inline int get_location(uint32_t program, const char *uniform_name) {
-    int location = glGetUniformLocation(program, uniform_name);
-    if (location == -1)
-        spdlog::warn("Uniform {} was not found in the program", uniform_name);
-
-    return location;
-}
-
-
-void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint32_t light_program, uint32_t n_vertices, uint32_t monkey_vao,
-                   uint32_t monkey_program, std::vector<unsigned int> &monkey_indices) {
+void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint32_t light_program, uint32_t n_vertices, uint32_t ferrari_vao,
+                   uint32_t ferrari_program, std::vector<unsigned int> &ferrari_indices) {
     using namespace std::chrono_literals;
 
     int width, height;
@@ -294,23 +335,23 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
     int proj_location = get_location(program, "u_proj");
     int view_location = get_location(program, "u_view");
     int viewpos_location = get_location(program, "u_viewpos");
-    int lightdir_location = get_location(program, "u_lightpos");
+    int lightpos_location = get_location(program, "u_lightpos");
     int cubecolor_location = get_location(program, "u_cubecolor");
 
     int light_model_location = get_location(light_program, "u_model");
     int light_proj_location = get_location(light_program, "u_proj");
     int light_view_location = get_location(light_program, "u_view");
 
-    int monkey_model_location = get_location(monkey_program, "u_model");
-    int monkey_proj_location = get_location(monkey_program, "u_proj");
-    int monkey_view_location = get_location(monkey_program, "u_view");
-    int monkey_viewpos_location = get_location(program, "u_viewpos");
-    int monkey_lightdir_location = get_location(program, "u_lightpos");
-    int monkey_normal_location = get_location(program, "u_normal");
+    int ferrari_model_location = get_location(ferrari_program, "u_model");
+    int ferrari_proj_location = get_location(ferrari_program, "u_proj");
+    int ferrari_view_location = get_location(ferrari_program, "u_view");
+    int ferrari_viewpos_location = get_location(program, "u_viewpos");
+    int ferrari_lightpos_location = get_location(program, "u_lightpos");
+    int ferrari_normal_location = get_location(program, "u_normal");
 
-    glUseProgram(monkey_program);
+    glUseProgram(ferrari_program);
 
-    glUniformMatrix4fv(monkey_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(ferrari_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
     
     glUseProgram(light_program);
 
@@ -320,26 +361,63 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
 
     glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
 
-    glm::vec3 viewpos{4.0f, 2.5f, 13.0f};
+    glm::vec3 viewpos{0.0f, 2.0f, -13.0f};
     
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
     glm::vec3 lightpos{3.0, -0.5, 3.0};
     
-    glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
+    glUniform3fv(lightpos_location, 1, glm::value_ptr(lightpos));
 
-    struct key_callback_data key_data{view_location, viewpos_location, viewpos};
+    double last_xpos, last_ypos;
+    glfwGetCursorPos(window, &last_xpos, &last_ypos);
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    glm::vec3 forward{ 1, 0, 0 };
+    struct key_callback_data key_data{view_location, viewpos_location, viewpos, forward, false, forward, last_xpos, last_ypos};
 
     glfwSetWindowUserPointer(window, &key_data);
 
-    glm::vec3 clear_color {0.0f};
+    glm::vec3 clear_color{ 0.0f };
     glm::vec3 cube_color{ 1.0f, 0.5f, 0.0f };
 
     transform cube{ glm::vec3{0.5f}, glm::vec3{0.0f}, glm::vec3{1.0f} };
+    transform ferrari{ glm::vec3{0.0f, -4.0f, 0.0f}, glm::vec3{0.0f, 67.0f, 0.0f}, glm::vec3{0.015f} };
+
+    last_xpos /= width;
+    last_ypos /= height;
+
+    euler_angle eangle{ 0.0f, 90.0f, 0.0f};
+
+    const float rotationSensitivity = 0.02;
 
     std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
+        
+        if (!key_data.mouse_enabled) {
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
+
+            xpos /= width;
+            ypos /= height;
+
+            double dx = xpos - last_xpos;
+            double dy = -(ypos - last_ypos);
+
+            last_xpos = xpos;
+            last_ypos = ypos;
+
+            eangle.pitch += dy * rotationSensitivity * dt.count();
+            eangle.yaw += dx * rotationSensitivity * dt.count();
+
+            eangle.normalize();
+
+            forward = eangle.to_vector();
+        }
+        
+        glm::mat4 view = glm::lookAt(viewpos, viewpos + forward, glm::vec3{ 0, 1, 0 });
 
         glfwPollEvents();
 
@@ -354,30 +432,34 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
 
         ImGui::ColorEdit3("clear color", (float*)&clear_color);
         
-        ImGui::DragFloat3("cube position", (float*)&cube.position);
+        ImGui::DragFloat3("cube position", (float*)&cube.position, 0.1f);
 
-        ImGui::DragFloat3("cube scale", (float*)&cube.scale);
+        ImGui::DragFloat3("cube scale", (float*)&cube.scale, 0.1f);
 
         ImGui::DragFloat3("cube rotation", (float*)&cube.rotation);
 
         ImGui::ColorEdit3("cube color", (float*)&cube_color);
 
-        ImGui::DragFloat3("light position", (float*)&lightpos);
+        ImGui::DragFloat3("light position", (float*)&lightpos, 0.1f);
 
-        ImGui::DragFloat3("viewer position", (float*)&viewpos);
+        ImGui::DragFloat3("viewer position", (float*)&viewpos, 0.1f);
+        
+        ImGui::DragFloat3("ferrari position", (float*)&ferrari.position, 0.1f);
+
+        ImGui::DragFloat3("ferrari scale", (float*)&ferrari.scale, 0.01f);
+
+        ImGui::DragFloat3("ferrari rotation", (float*)&ferrari.rotation);
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
 
         glBindVertexArray(cube_vao);
 
-        glUniform3fv(lightdir_location, 1, glm::value_ptr(lightpos));
+        glUniform3fv(lightpos_location, 1, glm::value_ptr(lightpos));
 
         glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color));
 
         glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
-
-        glm::mat4 view = glm::lookAt(viewpos, glm::vec3{0, 0, 0}, glm::vec3{0, 1, 0});
 
         glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -423,30 +505,29 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
             glDrawArrays(GL_TRIANGLES, 0, n_vertices);
         }
 
-        glUseProgram(monkey_program);
+        glUseProgram(ferrari_program);
         
-        glUniform3fv(monkey_lightdir_location, 1, glm::value_ptr(lightpos));
+        glUniform3fv(ferrari_lightpos_location, 1, glm::value_ptr(lightpos));
 
-        glUniform3fv(monkey_viewpos_location, 1, glm::value_ptr(viewpos));
+        glUniform3fv(ferrari_viewpos_location, 1, glm::value_ptr(viewpos));
 
-        glUniformMatrix4fv(monkey_view_location, 1, GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(ferrari_view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-        /* Monkey */
+        /* ferrari */
         {
-            glBindVertexArray(monkey_vao);
+            glBindVertexArray(ferrari_vao);
 
-            glm::vec3 monkey_pos{3.0f, 1.0f, 1.0f};
-            glUniformMatrix4fv(monkey_view_location, 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(ferrari_view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-            auto model = glm::translate(monkey_pos) * glm::rotate(glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f }) * glm::scale(glm::vec3{ 0.01 });
+            auto model = ferrari.to_model();
 
-            glUniformMatrix4fv(monkey_model_location, 1, GL_FALSE, glm::value_ptr(model));
+            glUniformMatrix4fv(ferrari_model_location, 1, GL_FALSE, glm::value_ptr(model));
 
             auto normal_matrix = glm::transpose(glm::inverse(model));
 
-            glUniformMatrix4fv(monkey_normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+            glUniformMatrix4fv(ferrari_normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
 
-            glDrawElements(GL_TRIANGLES, monkey_indices.size(), GL_UNSIGNED_INT, NULL);
+            glDrawElements(GL_TRIANGLES, ferrari_indices.size(), GL_UNSIGNED_INT, NULL);
         }
         glUseProgram(program);
         

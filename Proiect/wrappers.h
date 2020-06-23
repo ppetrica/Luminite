@@ -116,3 +116,30 @@ public:
 private:
     uint32_t handle_;
 };
+
+class texture_t {
+public:
+    explicit texture_t(uint32_t handle) : handle_(handle) {}
+    ~texture_t() {
+        glDeleteTextures(1, &handle_);
+    }
+
+    texture_t(const program_t &other) = delete;
+    texture_t operator=(const program_t &other) = delete;
+
+    texture_t(texture_t &&other) noexcept { 
+        handle_ = 0;
+        std::swap(handle_, other.handle_);
+    }
+
+    texture_t operator=(texture_t&& other) noexcept {
+        glDeleteTextures(1, &handle_);
+        handle_ = 0;
+        std::swap(handle_, other.handle_);
+    }
+
+    uint32_t get() const { return handle_; }
+
+private:
+    uint32_t handle_;
+};

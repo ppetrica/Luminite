@@ -33,6 +33,23 @@ std::pair<std::vector<vertex>, std::vector<unsigned int>> load_asset(const char*
 		throw std::exception("Mesh does not contain uv coordinates");
 	}
 
+	if (scene->HasMaterials()) {
+		spdlog::info("Texture has associated materials");
+		for (unsigned int i = 0; i < scene->mNumMaterials; i++)
+		{
+			const aiMaterial* material = scene->mMaterials[i];
+			aiString texturePath;
+
+			unsigned int numTextures= material->GetTextureCount(aiTextureType_DIFFUSE);   // always 0
+
+			if (material->GetTextureCount(aiTextureType_DIFFUSE) > 0 && material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath) == AI_SUCCESS) 
+			{
+				// never happens..
+				// scene->mNumTextures is always 0 aswell.
+			}
+		}
+	}
+
 	vertices.reserve(mesh->mNumVertices);
 	for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
 		aiVector3D pos = mesh->mVertices[i];

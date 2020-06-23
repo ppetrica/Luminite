@@ -58,10 +58,10 @@
     <None Include="lightVertex.glsl">
       <Filter>shaders</Filter>
     </None>
-    <None Include="monkeyVertex.glsl">
+    <None Include="ferrariFragment.glsl">
       <Filter>shaders</Filter>
     </None>
-    <None Include="monkeyFragment.glsl">
+    <None Include="ferrariVertex.glsl">
       <Filter>shaders</Filter>
     </None>
   </ItemGroup>
@@ -79,6 +79,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="stb_image.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="euler_angle.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

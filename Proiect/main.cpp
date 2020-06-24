@@ -21,9 +21,8 @@
 #include <chrono>
 
 
-void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program,
-                   uint32_t light_program, uint32_t n_vertices, uint32_t ferrari_vao,
-                   uint32_t ferrari_program, std::vector<unsigned int> &ferrari_indices);
+void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
+                   uint32_t program, std::vector<unsigned int> &indices);
 
 
 #ifdef _DEBUG
@@ -47,6 +46,8 @@ static void window_size_callback(GLFWwindow *window, int width, int height) {
 
 
 struct key_callback_data {
+    std::unordered_map<int, bool> keys;
+
     int view_location;
     int viewpos_location;
 
@@ -58,39 +59,46 @@ struct key_callback_data {
 
     double &last_xpos;
     double &last_ypos;
+    
+    std::chrono::microseconds &dt;
 };
 
 
+static void process_keypresses(GLFWwindow *window, key_callback_data &data) {
+    glm::vec3 xvec{ 0.0f };
+    glm::vec3 yvec{ 0.0f };
+    glm::vec3 zvec{ 0.0f };
+
+    if (data.keys[GLFW_KEY_SPACE])
+        yvec += glm::vec3{ 0, 0.03f, 0 };
+
+    if (data.keys[GLFW_KEY_X])
+        yvec = glm::vec3{ 0, -0.03f, 0 };
+
+    if (data.keys[GLFW_KEY_A])
+        xvec += 0.01f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
+    if (data.keys[GLFW_KEY_D])
+        xvec -= 0.01f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
+
+    if (data.keys[GLFW_KEY_W])
+        zvec += 0.03f * data.forward;
+    if (data.keys[GLFW_KEY_S])
+        zvec -= 0.03f * data.forward;
+
+    glm::vec3 dif = yvec - xvec + zvec;
+    data.viewpos += dif;
+}
+
+
 static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
-    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+    using namespace std;
+    struct key_callback_data &data = *(struct key_callback_data *)glfwGetWindowUserPointer(window);
+
+    if (action == GLFW_PRESS) {
         spdlog::debug("Pressed key {}", key);
+        data.keys[key] = true;
 
-        struct key_callback_data &data = *(struct key_callback_data *)glfwGetWindowUserPointer(window);
-        
-        glm::vec3 xvec{ 0.0f };
-        glm::vec3 yvec{ 0.0f };
-        glm::vec3 zvec{ 0.0f };
-
-        switch (key) {
-        case GLFW_KEY_SPACE:
-            yvec = glm::vec3{ 0, 0.3f, 0 };
-            break;
-        case GLFW_KEY_X:
-            yvec = glm::vec3{ 0, -0.3f, 0 };
-            break;
-        case GLFW_KEY_A:
-            xvec = 0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
-            break;
-        case GLFW_KEY_D:
-            xvec = -0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
-            break;
-        case GLFW_KEY_W:
-            zvec = 0.3f * data.forward;
-            break;
-        case GLFW_KEY_S:
-            zvec = -0.3f * data.forward;
-            break;
-        case GLFW_KEY_ESCAPE:
+        if (key == GLFW_KEY_ESCAPE) {
             if (data.mouse_enabled) {
                 data.last_forward = data.forward;
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -106,19 +114,50 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
             }
             data.mouse_enabled ^= 1;
         }
-
-        glm::vec3 dif = yvec - xvec + zvec;
-        data.viewpos += dif;
+    } else if (action == GLFW_RELEASE) {
+        spdlog::debug("Released key {}", key);
+        data.keys[key] = false;
     }
 }
 
-texture_t load_texture(const std::string &path, unsigned int slot, bool invert) {
-    GLuint ferrari_texture;
 
-    glGenTextures(1, &ferrari_texture);
+static void process_mouse_movement(GLFWwindow *window, key_callback_data &key_data) {
+    const float rotationSensitivity = 0.02f;
+
+    static euler_angle eangle{ 0.0f, 90.0f, 0.0f};
+    if (!key_data.mouse_enabled) {
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
+
+        xpos /= width;
+        ypos /= height;
+
+        double dx = xpos - key_data.last_xpos;
+        double dy = -(ypos - key_data.last_ypos);
+
+        key_data.last_xpos = xpos;
+        key_data.last_ypos = ypos;
+
+        eangle.pitch += (float)dy * rotationSensitivity * key_data.dt.count();
+        eangle.yaw += (float)dx * rotationSensitivity * key_data.dt.count();
+
+        eangle.normalize();
+
+        key_data.forward = eangle.to_vector();
+    }
+}
+
+
+texture_t load_texture(const std::string &path, unsigned int slot, bool invert) {
+    GLuint texture;
+
+    glGenTextures(1, &texture);
 
     glActiveTexture(slot);
-    glBindTexture(GL_TEXTURE_2D, ferrari_texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
 
     if (invert) {
         stbi_set_flip_vertically_on_load(1);
@@ -146,7 +185,7 @@ texture_t load_texture(const std::string &path, unsigned int slot, bool invert) 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    return texture_t{ ferrari_texture };
+    return texture_t{ texture };
 }
 
 
@@ -170,6 +209,9 @@ struct transform {
     glm::vec3 rotation;
     glm::vec3 scale;
 
+    transform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) :
+        position(position), rotation(rotation), scale(scale) {}
+
     glm::mat4 to_model() const {
         return glm::translate(position)
             * glm::rotate(glm::radians(rotation.x), glm::vec3{ 1.0f, 0.0f, 0.0f })
@@ -179,11 +221,19 @@ struct transform {
     }
 };
 
-struct model {
-    uint32_t vao;
-    uint32_t shader;
-    uint32_t n_points;
-};
+
+void render_transform(const transform& transform, int model_location, int normal_location) {
+    auto model = transform.to_model();
+
+    glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+    auto normal_matrix = glm::transpose(glm::inverse(model));
+
+    glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+}
+
+
+const size_t n_vertices = sizeof(vertices) / (6 * sizeof(float));
 
 
 static inline int get_location(uint32_t program, const char *uniform_name) {
@@ -203,7 +253,7 @@ int main() {
         glfw_t glfw;
         spdlog::info("Initialized GLFW");
 
-        window_t window{ glfwCreateWindow(1080, 720, "Hello OpenGL", NULL, NULL), glfwDestroyWindow };
+        window_t window{ glfwCreateWindow(1080, 720, "Proiect SPG", NULL, NULL), glfwDestroyWindow };
         if (!window) {
             spdlog::error("Failed to create glfw window.");
 
@@ -263,29 +313,26 @@ int main() {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(vertex), (const void *)(sizeof(glm::vec3)));
 
-        program_t program = load_program("vertex.glsl", "fragment.glsl");
-        spdlog::info("Created main GLSL program");
-
-        program_t light_program = load_program("lightVertex.glsl", "lightFragment.glsl");
-        spdlog::info("Created light program");
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, 0, sizeof(vertex), (const void *)sizeof(glm::vec3));
 
         /* Loading and creating ferrari model */
-        auto [ferrari_vertices, ferrari_indices] = loader::load_asset("cube.obj");
+        auto [vertices, indices] = loader::load_asset("ferrari.obj");
         
         glGenVertexArrays(1, &handle);
-        vertex_array_t ferrari_vao{ handle };
+        vertex_array_t vao{ handle };
 
-        glBindVertexArray(ferrari_vao.get());
-
-        glGenBuffers(1, &handle);
-        buffer_t ferrari_vbo{ handle };
+        glBindVertexArray(vao.get());
 
         glGenBuffers(1, &handle);
-        buffer_t ferrari_ibo{ handle };
+        buffer_t vbo{ handle };
 
-        glBindBuffer(GL_ARRAY_BUFFER, ferrari_vbo.get());
+        glGenBuffers(1, &handle);
+        buffer_t ibo{ handle };
 
-        glBufferData(GL_ARRAY_BUFFER, ferrari_vertices.size() * sizeof(ferrari_vertices[0]), ferrari_vertices.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo.get());
+
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices[0]), vertices.data(), GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(loader::vertex), NULL);
@@ -296,19 +343,18 @@ int main() {
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(2 * sizeof(glm::vec3)));
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ferrari_ibo.get());
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo.get());
         
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, ferrari_indices.size() * sizeof(ferrari_indices[0]), ferrari_indices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(indices[0]), indices.data(), GL_STATIC_DRAW);
 
-        program_t ferrari_program = load_program("ferrariVertex.glsl", "ferrariFragment.glsl");
+        program_t program = load_program("vertex.glsl", "fragment.glsl");
 
+        texture_t texture = load_texture("ferrari.png", GL_TEXTURE0, false);
 
-        texture_t texture = load_texture("brickwall.jpg", GL_TEXTURE0, false);
+        glUniform1i(get_location(program.get(), "u_tex"), 0);
 
-        glUniform1i(get_location(ferrari_program.get(), "u_ferrari_tex"), 0);
-
-        run_main_loop(window.get(), cube_vao.get(), program.get(), light_program.get(), sizeof(vertices) / (6 * sizeof(float)),
-                      ferrari_vao.get(), ferrari_program.get(), ferrari_indices);
+        run_main_loop(window.get(), cube_vao.get(),
+                      vao.get(), program.get(), indices);
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -321,8 +367,62 @@ int main() {
 }
 
 
-void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint32_t light_program, uint32_t n_vertices, uint32_t ferrari_vao,
-                   uint32_t ferrari_program, std::vector<unsigned int> &ferrari_indices) {
+class light {
+public:
+    light (uint32_t program, std::string name, glm::vec3 position = glm::vec3(0.0f))
+        : program(program), name(name), position(position), ambient(0.3f), constant(2.0f), linear(0.2f), quadratic(0.01f) {
+        position_loc = get_location(program, (name + ".position").c_str());
+        
+        ambient_loc = get_location(program, (name + ".ambient").c_str());
+
+        constant_loc = get_location(program, (name + ".constant").c_str());
+        linear_loc = get_location(program, (name + ".linear").c_str());
+        quadratic_loc = get_location(program, (name + ".quadratic").c_str());
+    }
+
+    void update() {
+        glUseProgram(program);
+
+        glUniform3fv(position_loc, 1, glm::value_ptr(position));
+        
+        glUniform3fv(ambient_loc, 1, glm::value_ptr(ambient));
+        
+        glUniform1f(constant_loc, constant);
+        glUniform1f(linear_loc, linear);
+        glUniform1f(quadratic_loc, quadratic);
+    }
+
+    void draw(int model_location) {
+        glUseProgram(program);
+        
+        auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.05f });
+
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+    }
+
+    const uint32_t program;
+    const std::string name;
+
+    glm::vec3 position;
+    glm::vec3 ambient;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+private:
+    int position_loc;
+    int ambient_loc;
+    int constant_loc;
+    int linear_loc;
+    int quadratic_loc;
+};
+
+
+void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
+                   uint32_t program, std::vector<unsigned int> &indices) {
     using namespace std::chrono_literals;
 
     int width, height;
@@ -331,95 +431,86 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
     glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 100.0f);
 
     int model_location = get_location(program, "u_model");
-    int normal_location = get_location(program, "u_normal");
-    int proj_location = get_location(program, "u_proj");
     int view_location = get_location(program, "u_view");
     int viewpos_location = get_location(program, "u_viewpos");
-    int lightpos_location = get_location(program, "u_lightpos");
-    int cubecolor_location = get_location(program, "u_cubecolor");
-
-    int light_model_location = get_location(light_program, "u_model");
-    int light_proj_location = get_location(light_program, "u_proj");
-    int light_view_location = get_location(light_program, "u_view");
-
-    int ferrari_model_location = get_location(ferrari_program, "u_model");
-    int ferrari_proj_location = get_location(ferrari_program, "u_proj");
-    int ferrari_view_location = get_location(ferrari_program, "u_view");
-    int ferrari_viewpos_location = get_location(program, "u_viewpos");
-    int ferrari_lightpos_location = get_location(program, "u_lightpos");
-    int ferrari_normal_location = get_location(program, "u_normal");
-
-    glUseProgram(ferrari_program);
-
-    glUniformMatrix4fv(ferrari_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
+    int normal_location = get_location(program, "u_normal");
     
-    glUseProgram(light_program);
+    int light_color_location = get_location(program, "u_light_color");
 
-    glUniformMatrix4fv(light_proj_location, 1, GL_FALSE, glm::value_ptr(projection));
-    
+    int cubecolor_location = get_location(program, "u_color");
+
+    glm::vec3 light_color{ 1.0f, 0.7f, 0.8f };
+
+    std::vector<light> lights;
+    std::vector<transform> ferraris;
+
+    const int n_copies = 5;
+    for (int i = 0; i < n_copies; ++i) {
+        float degrees = i * 360 / n_copies;
+        float radians = glm::radians(degrees);
+        float dl = 10;
+        float df = 20;
+
+        float c = cos(radians);
+        float s = sin(radians);
+        lights.emplace_back(program, "u_light[" + std::to_string(i) + "]", glm::vec3{ dl * c, 1, dl * s });
+
+        ferraris.emplace_back(glm::vec3{df * c, -4.0f, df * s}, glm::vec3{0.0f, -degrees, 0.0f}, glm::vec3{0.015f});
+    }
+
     glUseProgram(program);
 
+    /* Set up projection, it won't change for the rest of the program */
+    int proj_location = get_location(program, "u_proj");
     glUniformMatrix4fv(proj_location, 1, GL_FALSE, glm::value_ptr(projection));
 
-    glm::vec3 viewpos{0.0f, 2.0f, -13.0f};
+    int type_location = get_location(program, "u_type");
     
-    glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
+    int n_lights_location = get_location(program, "u_n_lights");
 
-    glm::vec3 lightpos{3.0, -0.5, 3.0};
-    
-    glUniform3fv(lightpos_location, 1, glm::value_ptr(lightpos));
+    /* Initial viewer position */
+    glm::vec3 viewpos{0.0f, 60.0f, 0.0f};
+    glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
     double last_xpos, last_ypos;
     glfwGetCursorPos(window, &last_xpos, &last_ypos);
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    glm::vec3 forward{ 1, 0, 0 };
-    struct key_callback_data key_data{view_location, viewpos_location, viewpos, forward, false, forward, last_xpos, last_ypos};
+    std::chrono::microseconds dt = 0us;
+
+    glm::vec3 forward{ 0, 0, 1 };
+    struct key_callback_data key_data{
+        {},
+        view_location,
+        viewpos_location,
+        viewpos,
+        forward,
+        false,
+        forward,
+        last_xpos,
+        last_ypos,
+        dt
+    };
 
     glfwSetWindowUserPointer(window, &key_data);
 
     glm::vec3 clear_color{ 0.0f };
-    glm::vec3 cube_color{ 1.0f, 0.5f, 0.0f };
 
     transform cube{ glm::vec3{0.5f}, glm::vec3{0.0f}, glm::vec3{1.0f} };
-    transform ferrari{ glm::vec3{0.0f, -4.0f, 0.0f}, glm::vec3{0.0f, 67.0f, 0.0f}, glm::vec3{0.015f} };
-
+   
     last_xpos /= width;
     last_ypos /= height;
 
-    euler_angle eangle{ 0.0f, 90.0f, 0.0f};
-
-    const float rotationSensitivity = 0.02;
-
-    std::chrono::microseconds dt = 0us;
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
-        
-        if (!key_data.mouse_enabled) {
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
 
-            xpos /= width;
-            ypos /= height;
-
-            double dx = xpos - last_xpos;
-            double dy = -(ypos - last_ypos);
-
-            last_xpos = xpos;
-            last_ypos = ypos;
-
-            eangle.pitch += dy * rotationSensitivity * dt.count();
-            eangle.yaw += dx * rotationSensitivity * dt.count();
-
-            eangle.normalize();
-
-            forward = eangle.to_vector();
-        }
-        
         glm::mat4 view = glm::lookAt(viewpos, viewpos + forward, glm::vec3{ 0, 1, 0 });
 
         glfwPollEvents();
+
+        process_keypresses(window, key_data);
+        process_mouse_movement(window, key_data);
 
         glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -427,109 +518,87 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t program, uint
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-        
-        ImGui::Begin("Hello, world!");
+
+        ImGui::Begin("ImGui - best GUI library");
 
         ImGui::ColorEdit3("clear color", (float*)&clear_color);
         
-        ImGui::DragFloat3("cube position", (float*)&cube.position, 0.1f);
-
-        ImGui::DragFloat3("cube scale", (float*)&cube.scale, 0.1f);
-
-        ImGui::DragFloat3("cube rotation", (float*)&cube.rotation);
-
-        ImGui::ColorEdit3("cube color", (float*)&cube_color);
-
-        ImGui::DragFloat3("light position", (float*)&lightpos, 0.1f);
+        ImGui::ColorEdit3("light color", (float*)&light_color, 0.1f);
 
         ImGui::DragFloat3("viewer position", (float*)&viewpos, 0.1f);
-        
-        ImGui::DragFloat3("ferrari position", (float*)&ferrari.position, 0.1f);
 
-        ImGui::DragFloat3("ferrari scale", (float*)&ferrari.scale, 0.01f);
+        ImGui::DragFloat3("viewer position", (float*)&viewpos, 0.1f);
 
-        ImGui::DragFloat3("ferrari rotation", (float*)&ferrari.rotation);
+        for (int i = 0; i < ferraris.size(); ++i) {
+            std::string label = std::string{ "ferrari " } +std::to_string(i);
+            ImGui::Text(label.c_str());
+
+            ImGui::DragFloat3(("f_position_" + std::to_string(i)).c_str(), (float*)&ferraris[i].position, 0.1f);
+            ImGui::DragFloat3(("f_scale_" + std::to_string(i)).c_str(), (float*)&ferraris[i].scale, 0.001f);
+            ImGui::DragFloat3(("f_rotation_" + std::to_string(i)).c_str(), (float*)&ferraris[i].rotation);
+        }
+
+        for (int i = 0; i < lights.size(); ++i) {
+            std::string label = std::string{ "light " } +std::to_string(i);
+            ImGui::Text(label.c_str());
+
+            ImGui::DragFloat3(("l_position_" + std::to_string(i)).c_str(), (float*)&lights[i].position, 0.1f);
+            ImGui::DragFloat(("l_constant_" + std::to_string(i)).c_str(), &lights[i].constant, 0.01f);
+            ImGui::DragFloat(("l_linear_" + std::to_string(i)).c_str(), &lights[i].linear, 0.001f);
+            ImGui::DragFloat(("l_quadratic_" + std::to_string(i)).c_str(), &lights[i].quadratic, 0.0001f);
+        }
+
+        if (ImGui::Button("+ light")) {
+            lights.push_back({
+                program,
+                std::string{"u_light[" + std::to_string(lights.size()) + "]"}
+             });
+        }
+
+        if (ImGui::Button("- light")) {
+            lights.pop_back();
+        }
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
 
         glBindVertexArray(cube_vao);
 
-        glUniform3fv(lightpos_location, 1, glm::value_ptr(lightpos));
+        glUseProgram(program);
+        
+        glUniform3fv(light_color_location, 1, glm::value_ptr(light_color));
 
-        glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color));
+        glUniform1i(n_lights_location, lights.size());
 
         glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
         glUniformMatrix4fv(view_location, 1, GL_FALSE, glm::value_ptr(view));
 
-        /* First cube */
-        {
-            auto model = cube.to_model();
+        glUniform1i(type_location, 1);
 
-            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+        glm::vec3 platform_color{ 0.7f, 0.7f, 0.7f };
+        glUniform3fv(cubecolor_location, 1, glm::value_ptr(platform_color));
 
-            auto normal_matrix = glm::transpose(glm::inverse(model));
+        glBindVertexArray(cube_vao);
+        transform platform{ {0.0f, -4.0f, 0.0f}, {0.0f, 0.0f, 0.0f}, {100.0f, 0.1f, 100.0f} };
+        render_transform(platform, model_location, normal_location);
+        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
 
-            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
+        glUniform1i(type_location, 2);
 
-            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        for (int i = 0; i < lights.size(); ++i) {
+            lights[i].update();
+            lights[i].draw(model_location);
         }
 
-        /* Second cube */
-        {
-            transform cube2 {-cube.position, -cube.rotation, cube.scale };
-            glm::vec3 cube_color2 {1.0 - cube_color.r, 1.0 - cube_color.g, 1.0 - cube_color.g};
-            glUniform3fv(cubecolor_location, 1, glm::value_ptr(cube_color2));
-            
-            auto model = cube2.to_model();
+        glUniform1i(type_location, 0);
 
-            glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+        glBindVertexArray(vao);
 
-            auto normal_matrix = glm::transpose(glm::inverse(model));
-
-            glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
-
-            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+        for (int i = 0; i < ferraris.size(); ++i) {
+            render_transform(ferraris[i], model_location, normal_location);
+            glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, NULL);
         }
-
-        glUseProgram(light_program);
-        /* Light cube */
-        {
-            glUniformMatrix4fv(light_view_location, 1, GL_FALSE, glm::value_ptr(view));
-
-            auto model = glm::translate(lightpos) * glm::scale(glm::vec3{ 0.2f });
-
-            glUniformMatrix4fv(light_model_location, 1, GL_FALSE, glm::value_ptr(model));
-
-            glDrawArrays(GL_TRIANGLES, 0, n_vertices);
-        }
-
-        glUseProgram(ferrari_program);
-        
-        glUniform3fv(ferrari_lightpos_location, 1, glm::value_ptr(lightpos));
-
-        glUniform3fv(ferrari_viewpos_location, 1, glm::value_ptr(viewpos));
-
-        glUniformMatrix4fv(ferrari_view_location, 1, GL_FALSE, glm::value_ptr(view));
-
-        /* ferrari */
-        {
-            glBindVertexArray(ferrari_vao);
-
-            glUniformMatrix4fv(ferrari_view_location, 1, GL_FALSE, glm::value_ptr(view));
-
-            auto model = ferrari.to_model();
-
-            glUniformMatrix4fv(ferrari_model_location, 1, GL_FALSE, glm::value_ptr(model));
-
-            auto normal_matrix = glm::transpose(glm::inverse(model));
-
-            glUniformMatrix4fv(ferrari_normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
-
-            glDrawElements(GL_TRIANGLES, ferrari_indices.size(), GL_UNSIGNED_INT, NULL);
-        }
-        glUseProgram(program);
         
         ImGui::Render();
         

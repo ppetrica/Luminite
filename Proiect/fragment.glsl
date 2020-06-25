@@ -75,8 +75,7 @@ void main() {
 	} else if (u_type == 1) {
 		color = min(light * u_color, 1.0f);
 	} else if (u_type == 2) {
-		color = vec3(1.0f);
-		//color = u_light_color;
+		color = u_light_color;
 	}
 
 	fragColor = vec4(color, 1.0);

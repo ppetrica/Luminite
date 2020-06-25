@@ -21,8 +21,8 @@
 #include <chrono>
 
 
-void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
-                   uint32_t program, std::vector<unsigned int> &indices);
+void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint32_t vao,
+                   uint32_t ibo, std::vector<unsigned int> &indices, uint32_t tree_vao, uint32_t tree_ibo, std::vector<unsigned int> &tree_ind);
 
 
 #ifdef _DEBUG
@@ -351,10 +351,40 @@ int main() {
 
         texture_t texture = load_texture("ferrari.png", GL_TEXTURE0, false);
 
-        glUniform1i(get_location(program.get(), "u_tex"), 0);
+        auto [tree_vert, tree_ind] = loader::load_asset("new_tree2.obj");
 
-        run_main_loop(window.get(), cube_vao.get(),
-                      vao.get(), program.get(), indices);
+        glGenVertexArrays(1, &handle);
+        vertex_array_t tree_vao{ handle };
+
+        glBindVertexArray(tree_vao.get());
+
+        glGenBuffers(1, &handle);
+        buffer_t tree_vbo{ handle };
+
+        glGenBuffers(1, &handle);
+        buffer_t tree_ibo{ handle };
+
+        glBindBuffer(GL_ARRAY_BUFFER, tree_vbo.get());
+
+        glBufferData(GL_ARRAY_BUFFER, tree_vert.size() * sizeof(tree_vert[0]), tree_vert.data(), GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, 0, sizeof(loader::vertex), NULL);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(sizeof(glm::vec3)));
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, 0, sizeof(loader::vertex), (const void *)(2 * sizeof(glm::vec3)));
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tree_ibo.get());
+
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, tree_ind.size() * sizeof(tree_ind[0]), tree_ind.data(), GL_STATIC_DRAW);
+
+        texture_t tree_tex = load_texture("tree.jpg", GL_TEXTURE1, false);
+
+        run_main_loop(window.get(), program.get(), cube_vao.get(),
+                      vao.get(), ibo.get(), indices, tree_vao.get(), tree_ibo.get(), tree_ind);
     } catch (const std::exception &ex) {
         spdlog::error("{}", ex.what());
 
@@ -380,6 +410,8 @@ public:
         quadratic_loc = get_location(program, (name + ".quadratic").c_str());
 
         color_loc = get_location(program, (name + ".color").c_str());
+     
+        light_color_location = get_location(program, "u_light_color");
     }
 
     void update() {
@@ -399,9 +431,9 @@ public:
     void draw(int model_location) {
         glUseProgram(program);
 
-        glUniformMatrix3fv(light_color_location, 1, GL_FALSE, glm::value_ptr(color));
+        glUniform3fv(light_color_location, 1, glm::value_ptr(color));
 
-        auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.05f });
+        auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.2f });
 
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
 
@@ -430,8 +462,10 @@ private:
 };
 
 
-void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
-                   uint32_t program, std::vector<unsigned int> &indices) {
+
+
+void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint32_t vao,
+    uint32_t ibo, std::vector<unsigned int> &indices, uint32_t tree_vao, uint32_t tree_ibo, std::vector<unsigned int> &tree_ind) {
     using namespace std::chrono_literals;
 
     int width, height;
@@ -446,6 +480,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     
     int cubecolor_location = get_location(program, "u_color");
 
+    transform tree{ glm::vec3{0.0f}, glm::vec3{0.0f}, glm::vec3{0.1f} };
     std::vector<float> langles;
     std::vector<light> lights;
     std::vector<float> fangles;
@@ -472,6 +507,34 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     }
 
     lights.emplace_back(program, "u_light[" + std::to_string(n_copies) + "]", glm::vec3{0.0f, center_light_pos_y, 0.0f});
+
+    float tree_bottom = -3;
+    float tree_top = 10;
+    float bottom_radius = 6;
+    float top_radius = 0.5;
+    int floors = 7;
+    float total_y = tree_top - tree_bottom;
+    float total_radius = bottom_radius - top_radius;
+    int globes_per_floor = 8;
+    for (int i = 0; i < floors; ++i) {
+        float y = tree_bottom + i * total_y / floors;
+        float radius = bottom_radius - i * total_radius / floors;
+
+        for (int i = 0; i < 8; ++i) {
+            float degrees = ((float)rand() / RAND_MAX) * 360.0f;
+            float radians = glm::radians(degrees);
+
+            float c = cos(radians);
+            float s = sin(radians);
+
+            light l{program, "u_light[" + std::to_string(lights.size()) + "]", glm::vec3{ radius * c, y, radius * s }, glm::vec3{ (c + 1.5) / 2, (s + 1.5) / 2, 0.5f }};
+            l.constant = 0.0f;
+            l.linear = 0.0f;
+            l.quadratic = 5.0f;
+
+            lights.push_back(l);
+        }
+    }
 
     glUseProgram(program);
 
@@ -520,6 +583,8 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     bool start = true;
 
     float x = 0;
+
+    int texture_location = get_location(program, "u_tex");
 
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
@@ -616,10 +681,23 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
 
         glBindVertexArray(vao);
 
+        glUniform1i(texture_location, 0);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+
         for (int i = 0; i < ferraris.size(); ++i) {
             render_transform(ferraris[i], model_location, normal_location);
             glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, NULL);
         }
+
+        glUniform1i(texture_location, 1);
+        
+        glBindVertexArray(tree_vao);
+        
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tree_ibo);
+
+        render_transform(tree, model_location, normal_location);
+        glDrawElements(GL_TRIANGLES, tree_ind.size(), GL_UNSIGNED_INT, NULL);
 
         if (start) {
             for (int i = 0; i < ferraris.size(); ++i) {
@@ -656,7 +734,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
                 lights[i].position.y = center_light_pos_y + 30 * (sin(x) + 1);
             }
         }
-        
+
         ImGui::Render();
         
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

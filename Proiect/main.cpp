@@ -70,23 +70,23 @@ static void process_keypresses(GLFWwindow *window, key_callback_data &data) {
     glm::vec3 zvec{ 0.0f };
 
     if (data.keys[GLFW_KEY_SPACE])
-        yvec += glm::vec3{ 0, 0.03f, 0 };
+        yvec += glm::vec3{ 0, 0.1f, 0 };
 
     if (data.keys[GLFW_KEY_X])
-        yvec = glm::vec3{ 0, -0.03f, 0 };
+        yvec = glm::vec3{ 0, -0.1f, 0 };
 
     if (data.keys[GLFW_KEY_A])
-        xvec += 0.01f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
+        xvec += 0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
     if (data.keys[GLFW_KEY_D])
-        xvec -= 0.01f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
+        xvec -= 0.1f * glm::normalize(glm::cross(data.forward, glm::vec3{ 0, 1, 0 }));
 
     if (data.keys[GLFW_KEY_W])
-        zvec += 0.03f * data.forward;
+        zvec += 0.3f * data.forward;
     if (data.keys[GLFW_KEY_S])
-        zvec -= 0.03f * data.forward;
+        zvec -= 0.3f * data.forward;
 
     glm::vec3 dif = yvec - xvec + zvec;
-    data.viewpos += dif;
+    data.viewpos += dif * ((float)data.dt.count() / 10000);
 }
 
 
@@ -122,7 +122,7 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 
 
 static void process_mouse_movement(GLFWwindow *window, key_callback_data &key_data) {
-    const float rotationSensitivity = 0.02f;
+    const float rotationSensitivity = 0.008f;
 
     static euler_angle eangle{ 0.0f, 90.0f, 0.0f};
     if (!key_data.mouse_enabled) {
@@ -250,6 +250,8 @@ int main() {
 #ifdef _DEBUG
         spdlog::set_level(spdlog::level::debug);
 #endif
+        srand(time(NULL));
+
         glfw_t glfw;
         spdlog::info("Initialized GLFW");
 
@@ -701,7 +703,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint
 
         if (start) {
             for (int i = 0; i < ferraris.size(); ++i) {
-                fangles[i] += 0.03;
+                fangles[i] += 0.03 * dt.count() / 10000;
 
                 float radians = glm::radians(fangles[i]);
 
@@ -715,7 +717,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint
 
                 ferraris[i].rotation.y = -fangles[i];
 
-                langles[i] -= 0.1;
+                langles[i] -= 0.1 * dt.count() / 10000;
 
                 radians = glm::radians(langles[i]);
 
@@ -727,7 +729,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint
             }
 
             if (lights.size() > ferraris.size()) {
-                x += 0.01f;
+                x += 0.000001f * dt.count();
 
                 int i = ferraris.size();
 

@@ -369,8 +369,8 @@ int main() {
 
 class light {
 public:
-    light (uint32_t program, std::string name, glm::vec3 position = glm::vec3(0.0f))
-        : program(program), name(name), position(position), ambient(0.3f), constant(2.0f), linear(0.2f), quadratic(0.01f) {
+    light (uint32_t program, std::string name, glm::vec3 position = glm::vec3(0.0f), glm::vec3 color = glm::vec3(1.0f))
+        : program(program), name(name), position(position), ambient(0.3f), color(color), constant(2.0f), linear(0.2f), quadratic(0.01f) {
         position_loc = get_location(program, (name + ".position").c_str());
         
         ambient_loc = get_location(program, (name + ".ambient").c_str());
@@ -378,6 +378,8 @@ public:
         constant_loc = get_location(program, (name + ".constant").c_str());
         linear_loc = get_location(program, (name + ".linear").c_str());
         quadratic_loc = get_location(program, (name + ".quadratic").c_str());
+
+        color_loc = get_location(program, (name + ".color").c_str());
     }
 
     void update() {
@@ -386,7 +388,9 @@ public:
         glUniform3fv(position_loc, 1, glm::value_ptr(position));
         
         glUniform3fv(ambient_loc, 1, glm::value_ptr(ambient));
-        
+
+        glUniform3fv(color_loc, 1, glm::value_ptr(color));
+
         glUniform1f(constant_loc, constant);
         glUniform1f(linear_loc, linear);
         glUniform1f(quadratic_loc, quadratic);
@@ -394,7 +398,9 @@ public:
 
     void draw(int model_location) {
         glUseProgram(program);
-        
+
+        glUniformMatrix3fv(light_color_location, 1, GL_FALSE, glm::value_ptr(color));
+
         auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.05f });
 
         glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
@@ -407,6 +413,7 @@ public:
 
     glm::vec3 position;
     glm::vec3 ambient;
+    glm::vec3 color;
 
     float constant;
     float linear;
@@ -418,6 +425,8 @@ private:
     int constant_loc;
     int linear_loc;
     int quadratic_loc;
+    int color_loc;
+    int light_color_location;
 };
 
 
@@ -435,14 +444,14 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     int viewpos_location = get_location(program, "u_viewpos");
     int normal_location = get_location(program, "u_normal");
     
-    int light_color_location = get_location(program, "u_light_color");
-
     int cubecolor_location = get_location(program, "u_color");
 
-    glm::vec3 light_color{ 1.0f, 0.7f, 0.8f };
-
+    std::vector<float> langles;
     std::vector<light> lights;
+    std::vector<float> fangles;
     std::vector<transform> ferraris;
+
+    float center_light_pos_y = -3;
 
     const int n_copies = 5;
     for (int i = 0; i < n_copies; ++i) {
@@ -453,10 +462,16 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
 
         float c = cos(radians);
         float s = sin(radians);
-        lights.emplace_back(program, "u_light[" + std::to_string(i) + "]", glm::vec3{ dl * c, 1, dl * s });
+
+        fangles.push_back(degrees);
+        langles.push_back(degrees);
+
+        lights.emplace_back(program, "u_light[" + std::to_string(i) + "]", glm::vec3{ dl * c, -3, dl * s }, glm::vec3{ (c + 1.5) / 2, (s + 1.5) / 2, 0.5f });
 
         ferraris.emplace_back(glm::vec3{df * c, -4.0f, df * s}, glm::vec3{0.0f, -degrees, 0.0f}, glm::vec3{0.015f});
     }
+
+    lights.emplace_back(program, "u_light[" + std::to_string(n_copies) + "]", glm::vec3{0.0f, center_light_pos_y, 0.0f});
 
     glUseProgram(program);
 
@@ -469,7 +484,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     int n_lights_location = get_location(program, "u_n_lights");
 
     /* Initial viewer position */
-    glm::vec3 viewpos{0.0f, 60.0f, 0.0f};
+    glm::vec3 viewpos{4.0f, 54.0f, -48.0f};
     glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
 
     double last_xpos, last_ypos;
@@ -502,6 +517,10 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
     last_xpos /= width;
     last_ypos /= height;
 
+    bool start = true;
+
+    float x = 0;
+
     while (!glfwWindowShouldClose(window)) {
         auto start_frame_ts = std::chrono::high_resolution_clock::now();
 
@@ -523,11 +542,11 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
 
         ImGui::ColorEdit3("clear color", (float*)&clear_color);
         
-        ImGui::ColorEdit3("light color", (float*)&light_color, 0.1f);
-
         ImGui::DragFloat3("viewer position", (float*)&viewpos, 0.1f);
 
-        ImGui::DragFloat3("viewer position", (float*)&viewpos, 0.1f);
+        if (ImGui::Button("start / stop")) {
+            start ^= 1;
+        }
 
         for (int i = 0; i < ferraris.size(); ++i) {
             std::string label = std::string{ "ferrari " } +std::to_string(i);
@@ -542,6 +561,7 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
             std::string label = std::string{ "light " } +std::to_string(i);
             ImGui::Text(label.c_str());
 
+            ImGui::ColorEdit3(("l_color_" + std::to_string(i)).c_str(), (float*)&lights[i].color, 0.1f);
             ImGui::DragFloat3(("l_position_" + std::to_string(i)).c_str(), (float*)&lights[i].position, 0.1f);
             ImGui::DragFloat(("l_constant_" + std::to_string(i)).c_str(), &lights[i].constant, 0.01f);
             ImGui::DragFloat(("l_linear_" + std::to_string(i)).c_str(), &lights[i].linear, 0.001f);
@@ -566,8 +586,6 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
 
         glUseProgram(program);
         
-        glUniform3fv(light_color_location, 1, glm::value_ptr(light_color));
-
         glUniform1i(n_lights_location, lights.size());
 
         glUniform3fv(viewpos_location, 1, glm::value_ptr(viewpos));
@@ -584,10 +602,13 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
         render_transform(platform, model_location, normal_location);
         glDrawArrays(GL_TRIANGLES, 0, n_vertices);
 
+        for (int i = 0; i < lights.size(); ++i) {
+            lights[i].update();
+        }
+
         glUniform1i(type_location, 2);
 
         for (int i = 0; i < lights.size(); ++i) {
-            lights[i].update();
             lights[i].draw(model_location);
         }
 
@@ -598,6 +619,42 @@ void run_main_loop(GLFWwindow* window, uint32_t cube_vao, uint32_t vao,
         for (int i = 0; i < ferraris.size(); ++i) {
             render_transform(ferraris[i], model_location, normal_location);
             glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, NULL);
+        }
+
+        if (start) {
+            for (int i = 0; i < ferraris.size(); ++i) {
+                fangles[i] += 0.03;
+
+                float radians = glm::radians(fangles[i]);
+
+                float dl = 10;
+                float df = 20;
+
+                float c = cos(radians);
+                float s = sin(radians);
+
+                ferraris[i].position = glm::vec3{df * c, -4.0f, df * s};
+
+                ferraris[i].rotation.y = -fangles[i];
+
+                langles[i] -= 0.1;
+
+                radians = glm::radians(langles[i]);
+
+                c = cos(radians);
+                s = sin(radians);
+
+                if (i < lights.size())
+                    lights[i].position = glm::vec3{dl * c, -3.0f, dl * s};
+            }
+
+            if (lights.size() > ferraris.size()) {
+                x += 0.01f;
+
+                int i = ferraris.size();
+
+                lights[i].position.y = center_light_pos_y + 30 * (sin(x) + 1);
+            }
         }
         
         ImGui::Render();

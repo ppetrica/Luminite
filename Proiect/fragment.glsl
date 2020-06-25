@@ -25,10 +25,9 @@ uniform sampler2D u_tex;
 
 struct point_light {
 	vec3 position;
+	vec3 color;
 
 	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
 
 	float constant;
 	float linear;
@@ -67,18 +66,17 @@ uniform vec3 u_light_color;
 void main() {
 	vec3 light = vec3(0.0f);
 	for (int i = 0; i < u_n_lights; ++i) {
-		light += calculate_point_light(u_light[i], u_viewpos, pos, normal);
+		light += calculate_point_light(u_light[i], u_viewpos, pos, normal) * u_light[i].color;
 	}
 
-	light *= u_light_color;
-	
 	vec3 color;
 	if (u_type == 0) {
 		color = min(light * texture(u_tex, uv_coords).rgb, 1.0f);
 	} else if (u_type == 1) {
 		color = min(light * u_color, 1.0f);
 	} else if (u_type == 2) {
-		color = u_light_color;
+		color = vec3(1.0f);
+		//color = u_light_color;
 	}
 
 	fragColor = vec4(color, 1.0);

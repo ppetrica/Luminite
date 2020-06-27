@@ -175,6 +175,7 @@
   <ItemGroup>
     <ClInclude Include="cube.h" />
     <ClInclude Include="euler_angle.h" />
+    <ClInclude Include="light.h" />
     <ClInclude Include="loader.h" />
     <ClInclude Include="shader.h" />
     <ClInclude Include="stb_image.h" />

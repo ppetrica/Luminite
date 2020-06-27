@@ -21,6 +21,104 @@
 #include <chrono>
 
 
+/* Codul asta nu e cel mai bun pe care l-am scris ... dar nici nu-i cel mai rau */
+
+const size_t n_vertices = sizeof(vertices) / (6 * sizeof(float));
+
+
+struct user_input_data {
+    std::unordered_map<int, bool> keys;
+
+    int view_location;
+    int viewpos_location;
+
+    glm::vec3 &viewpos;
+    glm::vec3 &forward;
+
+    bool mouse_enabled;
+    glm::vec3 last_forward;
+
+    double &last_xpos;
+    double &last_ypos;
+
+    std::chrono::microseconds &dt;
+};
+
+
+static inline int get_location(uint32_t program, const char *uniform_name) {
+    int location = glGetUniformLocation(program, uniform_name);
+    if (location == -1)
+        spdlog::warn("Uniform {} was not found in the program", uniform_name);
+
+    return location;
+}
+
+
+class light {
+public:
+    light (uint32_t program, std::string name, glm::vec3 position = glm::vec3(0.0f), glm::vec3 color = glm::vec3(1.0f))
+        : program(program), name(name), position(position), ambient(0.3f), color(color), constant(2.0f), linear(0.2f), quadratic(0.01f) {
+        position_loc = get_location(program, (name + ".position").c_str());
+
+        ambient_loc = get_location(program, (name + ".ambient").c_str());
+
+        constant_loc = get_location(program, (name + ".constant").c_str());
+        linear_loc = get_location(program, (name + ".linear").c_str());
+        quadratic_loc = get_location(program, (name + ".quadratic").c_str());
+
+        color_loc = get_location(program, (name + ".color").c_str());
+
+        light_color_location = get_location(program, "u_light_color");
+    }
+
+    void update() {
+        glUseProgram(program);
+
+        glUniform3fv(position_loc, 1, glm::value_ptr(position));
+
+        glUniform3fv(ambient_loc, 1, glm::value_ptr(ambient));
+
+        glUniform3fv(color_loc, 1, glm::value_ptr(color));
+
+        glUniform1f(constant_loc, constant);
+        glUniform1f(linear_loc, linear);
+        glUniform1f(quadratic_loc, quadratic);
+    }
+
+    void draw(int model_location) {
+        glUseProgram(program);
+
+        glUniform3fv(light_color_location, 1, glm::value_ptr(color));
+
+        auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.2f });
+
+        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
+
+        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
+    }
+
+    const uint32_t program;
+    const std::string name;
+
+    glm::vec3 position;
+    glm::vec3 ambient;
+    glm::vec3 color;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+private:
+    int position_loc;
+    int ambient_loc;
+    int constant_loc;
+    int linear_loc;
+    int quadratic_loc;
+    int color_loc;
+    int light_color_location;
+};
+
+
 void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint32_t vao,
                    uint32_t ibo, std::vector<unsigned int> &indices, uint32_t tree_vao, uint32_t tree_ibo, std::vector<unsigned int> &tree_ind);
 
@@ -45,26 +143,7 @@ static void window_size_callback(GLFWwindow *window, int width, int height) {
 }
 
 
-struct key_callback_data {
-    std::unordered_map<int, bool> keys;
-
-    int view_location;
-    int viewpos_location;
-
-    glm::vec3 &viewpos;
-    glm::vec3 &forward;
-
-    bool mouse_enabled;
-    glm::vec3 last_forward;
-
-    double &last_xpos;
-    double &last_ypos;
-    
-    std::chrono::microseconds &dt;
-};
-
-
-static void process_keypresses(GLFWwindow *window, key_callback_data &data) {
+static void process_keypresses(GLFWwindow *window, user_input_data &data) {
     glm::vec3 xvec{ 0.0f };
     glm::vec3 yvec{ 0.0f };
     glm::vec3 zvec{ 0.0f };
@@ -92,7 +171,7 @@ static void process_keypresses(GLFWwindow *window, key_callback_data &data) {
 
 static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
     using namespace std;
-    struct key_callback_data &data = *(struct key_callback_data *)glfwGetWindowUserPointer(window);
+    struct user_input_data &data = *(struct user_input_data *)glfwGetWindowUserPointer(window);
 
     if (action == GLFW_PRESS) {
         spdlog::debug("Pressed key {}", key);
@@ -121,7 +200,7 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 }
 
 
-static void process_mouse_movement(GLFWwindow *window, key_callback_data &key_data) {
+static void process_mouse_movement(GLFWwindow *window, user_input_data &key_data) {
     const float rotationSensitivity = 0.008f;
 
     static euler_angle eangle{ 0.0f, 90.0f, 0.0f};
@@ -230,18 +309,6 @@ void render_transform(const transform& transform, int model_location, int normal
     auto normal_matrix = glm::transpose(glm::inverse(model));
 
     glUniformMatrix4fv(normal_location, 1, GL_FALSE, glm::value_ptr(normal_matrix));
-}
-
-
-const size_t n_vertices = sizeof(vertices) / (6 * sizeof(float));
-
-
-static inline int get_location(uint32_t program, const char *uniform_name) {
-    int location = glGetUniformLocation(program, uniform_name);
-    if (location == -1)
-        spdlog::warn("Uniform {} was not found in the program", uniform_name);
-
-    return location;
 }
 
 
@@ -399,73 +466,6 @@ int main() {
 }
 
 
-class light {
-public:
-    light (uint32_t program, std::string name, glm::vec3 position = glm::vec3(0.0f), glm::vec3 color = glm::vec3(1.0f))
-        : program(program), name(name), position(position), ambient(0.3f), color(color), constant(2.0f), linear(0.2f), quadratic(0.01f) {
-        position_loc = get_location(program, (name + ".position").c_str());
-        
-        ambient_loc = get_location(program, (name + ".ambient").c_str());
-
-        constant_loc = get_location(program, (name + ".constant").c_str());
-        linear_loc = get_location(program, (name + ".linear").c_str());
-        quadratic_loc = get_location(program, (name + ".quadratic").c_str());
-
-        color_loc = get_location(program, (name + ".color").c_str());
-     
-        light_color_location = get_location(program, "u_light_color");
-    }
-
-    void update() {
-        glUseProgram(program);
-
-        glUniform3fv(position_loc, 1, glm::value_ptr(position));
-        
-        glUniform3fv(ambient_loc, 1, glm::value_ptr(ambient));
-
-        glUniform3fv(color_loc, 1, glm::value_ptr(color));
-
-        glUniform1f(constant_loc, constant);
-        glUniform1f(linear_loc, linear);
-        glUniform1f(quadratic_loc, quadratic);
-    }
-
-    void draw(int model_location) {
-        glUseProgram(program);
-
-        glUniform3fv(light_color_location, 1, glm::value_ptr(color));
-
-        auto model = glm::translate(position) * glm::scale(glm::vec3{ 0.2f });
-
-        glUniformMatrix4fv(model_location, 1, GL_FALSE, glm::value_ptr(model));
-
-        glDrawArrays(GL_TRIANGLES, 0, n_vertices);
-    }
-
-    const uint32_t program;
-    const std::string name;
-
-    glm::vec3 position;
-    glm::vec3 ambient;
-    glm::vec3 color;
-
-    float constant;
-    float linear;
-    float quadratic;
-
-private:
-    int position_loc;
-    int ambient_loc;
-    int constant_loc;
-    int linear_loc;
-    int quadratic_loc;
-    int color_loc;
-    int light_color_location;
-};
-
-
-
-
 void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint32_t vao,
     uint32_t ibo, std::vector<unsigned int> &indices, uint32_t tree_vao, uint32_t tree_ibo, std::vector<unsigned int> &tree_ind) {
     using namespace std::chrono_literals;
@@ -560,7 +560,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint
     std::chrono::microseconds dt = 0us;
 
     glm::vec3 forward{ 0, 0, 1 };
-    struct key_callback_data key_data{
+    struct user_input_data key_data{
         {},
         view_location,
         viewpos_location,
@@ -578,7 +578,7 @@ void run_main_loop(GLFWwindow* window, uint32_t program, uint32_t cube_vao, uint
     glm::vec3 clear_color{ 0.0f };
 
     transform cube{ glm::vec3{0.5f}, glm::vec3{0.0f}, glm::vec3{1.0f} };
-   
+ 
     last_xpos /= width;
     last_ypos /= height;
 
